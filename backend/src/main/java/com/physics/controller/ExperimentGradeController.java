@@ -1198,29 +1198,35 @@ public class ExperimentGradeController {
         if (schedule.getGroupIds() != null && !schedule.getGroupIds().trim().isEmpty()) {
             String groupIdsStr = schedule.getGroupIds().replaceAll("[\\[\\]]", "");
             if (!groupIdsStr.isEmpty()) {
-                String[] groupNames = groupIdsStr.split(",");
-                for (String groupName : groupNames) {
-                    if (groupName != null && !groupName.trim().isEmpty()) {
-                        groupName = groupName.trim();
-                        // 获取该小组的所有学生
-                        List<User> groupStudents = userService.list(
-                            new QueryWrapper<User>().eq("group_name", groupName)
-                        );
-                        
-                        for (User student : groupStudents) {
+                // 按出现顺序收集去重后的小组名，一次性批量查学生（避免逐个小组查库的 N+1）
+                List<String> orderedGroupNames = new ArrayList<>();
+                for (String raw : groupIdsStr.split(",")) {
+                    String groupName = raw == null ? "" : raw.trim();
+                    if (!groupName.isEmpty() && !orderedGroupNames.contains(groupName)) {
+                        orderedGroupNames.add(groupName);
+                    }
+                }
+
+                if (!orderedGroupNames.isEmpty()) {
+                    Map<String, List<User>> studentsByGroup = userService.list(
+                            new QueryWrapper<User>().in("group_name", orderedGroupNames)
+                    ).stream().collect(Collectors.groupingBy(User::getGroupName));
+
+                    // 保持原有「按小组顺序」的输出
+                    for (String groupName : orderedGroupNames) {
+                        for (User student : studentsByGroup.getOrDefault(groupName, new ArrayList<>())) {
                             Map<String, Object> studentInfo = new HashMap<>();
                             studentInfo.put("userId", student.getUserId());
                             studentInfo.put("studentName", student.getRealName());
                             studentInfo.put("schoolId", student.getSchoolId());
                             studentInfo.put("classId", student.getClassId());
                             studentInfo.put("groupName", groupName);
-                            
-                            // 获取该学生的成绩
+
                             // 由于没有schedule_id，暂时不查询成绩
                             studentInfo.put("score", null);
                             studentInfo.put("gradeId", null);
                             studentInfo.put("status", "待录入");
-                            
+
                             students.add(studentInfo);
                         }
                     }
