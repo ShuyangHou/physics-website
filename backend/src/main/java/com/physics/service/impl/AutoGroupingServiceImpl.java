@@ -1,9 +1,12 @@
 package com.physics.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.physics.common.Result;
 import com.physics.entity.ExperimentSchedule;
 import com.physics.entity.GroupExperiment;
 import com.physics.entity.Experiment;
+import com.physics.entity.Semester;
+import com.physics.entity.User;
 import com.physics.service.AutoGroupingService;
 import com.physics.service.ExperimentScheduleService;
 import com.physics.service.GroupExperimentService;
@@ -72,7 +75,7 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
         }
     }
 
-    private void sortStudentsBySchoolId(List<com.physics.entity.User> students) {
+    private void sortStudentsBySchoolId(List<User> students) {
         if (students == null || students.size() <= 1) return;
         students.sort((a, b) -> {
             if (a == null && b == null) return 0;
@@ -93,11 +96,22 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
         });
     }
 
+    /**
+     * 设置某学生的分组信息（学期/套件/周类型），不落库；由调用方收集后批量更新。
+     */
+    private void applyGroupAssignment(User student, String groupName, Long semesterId, Long suiteId, Integer weekType) {
+        student.setGroupName(groupName);
+        student.setSemesterId(semesterId);
+        student.setSuiteId(suiteId);
+        student.setWeekType(weekType);
+    }
+
     private boolean assignABByClassEvenly(List<String> classList, Long semesterId, Long suiteId, Integer weekType) {
         try {
+            List<User> toUpdate = new ArrayList<>();
             for (String className : classList) {
                 if (className == null || className.trim().isEmpty()) continue;
-                List<com.physics.entity.User> students = userService.getStudentsByClassName(className.trim());
+                List<User> students = userService.getStudentsByClassName(className.trim());
                 if (students == null || students.isEmpty()) {
                     log.warn("班级 {} 没有学生", className);
                     continue;
@@ -106,15 +120,15 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
                 int n = students.size();
                 int aCount = (n + 1) / 2;
                 for (int i = 0; i < n; i++) {
-                    com.physics.entity.User stu = students.get(i);
+                    User stu = students.get(i);
                     String gn = (i < aCount) ? (className + "A") : (className + "B");
-                    stu.setGroupName(gn);
-                    stu.setSemesterId(semesterId);
-                    stu.setSuiteId(suiteId);
-                    stu.setWeekType(weekType);
-                    userService.updateById(stu);
+                    applyGroupAssignment(stu, gn, semesterId, suiteId, weekType);
+                    toUpdate.add(stu);
                 }
                 log.info("班级 {} 平分为A/B完成: A={}, B={}", className, aCount, n - aCount);
+            }
+            if (!toUpdate.isEmpty()) {
+                userService.updateBatchById(toUpdate);
             }
             return true;
         } catch (Exception e) {
@@ -140,10 +154,10 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
             orderedGroups.add(firstClass + "D");
 
             // 统计总人数
-            Map<String, List<com.physics.entity.User>> classToStudents = new HashMap<>();
+            Map<String, List<User>> classToStudents = new HashMap<>();
             int total = 0;
             for (String cls : classList) {
-                List<com.physics.entity.User> stus = userService.getStudentsByClassName(cls);
+                List<User> stus = userService.getStudentsByClassName(cls);
                 if (stus == null) stus = new ArrayList<>();
                 sortStudentsBySchoolId(stus);
                 classToStudents.put(cls, stus);
@@ -177,22 +191,22 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
             }
 
             // 分配AB（只取本班），剩余进入pool
-            Map<String, List<com.physics.entity.User>> groupToStudents = new LinkedHashMap<>();
-            List<com.physics.entity.User> remainingPool = new ArrayList<>();
+            Map<String, List<User>> groupToStudents = new LinkedHashMap<>();
+            List<User> remainingPool = new ArrayList<>();
 
             for (String cls : classList) {
-                List<com.physics.entity.User> stus = classToStudents.getOrDefault(cls, new ArrayList<>());
+                List<User> stus = classToStudents.getOrDefault(cls, new ArrayList<>());
                 int idx = 0;
                 String gA = cls + "A";
                 String gB = cls + "B";
                 int capA = desiredSize.getOrDefault(gA, 0);
                 int capB = desiredSize.getOrDefault(gB, 0);
 
-                List<com.physics.entity.User> aList = new ArrayList<>();
+                List<User> aList = new ArrayList<>();
                 for (int i = 0; i < capA && idx < stus.size(); i++) {
                     aList.add(stus.get(idx++));
                 }
-                List<com.physics.entity.User> bList = new ArrayList<>();
+                List<User> bList = new ArrayList<>();
                 for (int i = 0; i < capB && idx < stus.size(); i++) {
                     bList.add(stus.get(idx++));
                 }
@@ -212,8 +226,8 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
             int capC = desiredSize.getOrDefault(gC, 0);
             int capD = desiredSize.getOrDefault(gD, 0);
 
-            List<com.physics.entity.User> cList = new ArrayList<>();
-            List<com.physics.entity.User> dList = new ArrayList<>();
+            List<User> cList = new ArrayList<>();
+            List<User> dList = new ArrayList<>();
 
             // 若池子人数与cap不一致（极端情况下AB受限导致池子更多），则退化为对池子进行平分
             if (remainingPool.size() == (capC + capD)) {
@@ -232,19 +246,20 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
             groupToStudents.put(gC, cList);
             groupToStudents.put(gD, dList);
 
-            // 写回DB
-            for (Map.Entry<String, List<com.physics.entity.User>> e : groupToStudents.entrySet()) {
+            // 写回DB（批量）
+            List<User> toUpdate = new ArrayList<>();
+            for (Map.Entry<String, List<User>> e : groupToStudents.entrySet()) {
                 String groupName = e.getKey();
-                List<com.physics.entity.User> stus = e.getValue();
+                List<User> stus = e.getValue();
                 if (stus == null) continue;
-                for (com.physics.entity.User stu : stus) {
-                    stu.setGroupName(groupName);
-                    stu.setSemesterId(semesterId);
-                    stu.setSuiteId(suiteId);
-                    stu.setWeekType(weekType);
-                    userService.updateById(stu);
+                for (User stu : stus) {
+                    applyGroupAssignment(stu, groupName, semesterId, suiteId, weekType);
+                    toUpdate.add(stu);
                 }
                 log.info("4班平分：组 {} 分配人数 {}", groupName, stus.size());
+            }
+            if (!toUpdate.isEmpty()) {
+                userService.updateBatchById(toUpdate);
             }
 
             return true;
@@ -399,7 +414,7 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
             // 其他班级数：保持旧逻辑（12/12 + C/D 平均）
             int totalStudentsInTimeSlot = 0;
             for (String className : classList) {
-                List<com.physics.entity.User> classStudents = userService.getStudentsByClassName(className);
+                List<User> classStudents = userService.getStudentsByClassName(className);
                 totalStudentsInTimeSlot += (classStudents == null ? 0 : classStudents.size());
             }
             log.info("该时间段总学生数: {}", totalStudentsInTimeSlot);
@@ -442,7 +457,7 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
                                           Long semesterId, Long suiteId, Integer weekType) {
         try {
             // 获取该班级的所有学生
-            List<com.physics.entity.User> students = userService.getStudentsByClassName(className);
+            List<User> students = userService.getStudentsByClassName(className);
             
             if (students.isEmpty()) {
                 log.warn("班级 {} 没有学生", className);
@@ -463,6 +478,7 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
             log.info("班级 {} 共有 {} 个学生", className, classStudentCount);
             
             int studentIndex = 0;
+            List<User> toUpdate = new ArrayList<>();
             
             // 分配A组：前12个学生（第1-12个）
             if (classABGroups.contains(className + "A")) {
@@ -470,14 +486,9 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
                 log.info("班级 {} 的A组分配 {} 个学生", className, aGroupCount);
                 
                 for (int i = 0; i < aGroupCount && studentIndex < students.size(); i++) {
-                    com.physics.entity.User student = students.get(studentIndex);
-                    student.setGroupName(className + "A");
-                    student.setSemesterId(semesterId);
-                    student.setSuiteId(suiteId);
-                    student.setWeekType(weekType);
-                    userService.updateById(student);
-                    log.debug("学生 {} 分配到分组 {} (学期ID: {}, 实验套ID: {}, 周类型: {})", 
-                            student.getRealName(), className + "A", semesterId, suiteId, weekType);
+                    User student = students.get(studentIndex);
+                    applyGroupAssignment(student, className + "A", semesterId, suiteId, weekType);
+                    toUpdate.add(student);
                     studentIndex++;
                 }
             }
@@ -489,16 +500,15 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
                 log.info("班级 {} 的B组分配 {} 个学生", className, bGroupCount);
                 
                 for (int i = 0; i < bGroupCount && studentIndex < students.size(); i++) {
-                    com.physics.entity.User student = students.get(studentIndex);
-                    student.setGroupName(className + "B");
-                    student.setSemesterId(semesterId);
-                    student.setSuiteId(suiteId);
-                    student.setWeekType(weekType);
-                    userService.updateById(student);
-                    log.debug("学生 {} 分配到分组 {} (学期ID: {}, 实验套ID: {}, 周类型: {})", 
-                            student.getRealName(), className + "B", semesterId, suiteId, weekType);
+                    User student = students.get(studentIndex);
+                    applyGroupAssignment(student, className + "B", semesterId, suiteId, weekType);
+                    toUpdate.add(student);
                     studentIndex++;
                 }
+            }
+            
+            if (!toUpdate.isEmpty()) {
+                userService.updateBatchById(toUpdate);
             }
             
             // 超过24人的学生不在这里分配，留给C组D组分配
@@ -538,10 +548,10 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
             }
             
             // 收集所有班级中未分配分组的学生（即groupName为null或空的学生）
-            List<com.physics.entity.User> remainingStudents = new ArrayList<>();
+            List<User> remainingStudents = new ArrayList<>();
             for (String className : classList) {
-                List<com.physics.entity.User> classStudents = userService.getStudentsByClassName(className);
-                for (com.physics.entity.User student : classStudents) {
+                List<User> classStudents = userService.getStudentsByClassName(className);
+                for (User student : classStudents) {
                     if (student.getGroupName() == null || student.getGroupName().trim().isEmpty()) {
                         remainingStudents.add(student);
                     }
@@ -564,6 +574,7 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
                 int extraStudents = totalRemainingStudents % cdGroupsCount;
                 
                 int studentIndex = 0;
+                List<User> toUpdate = new ArrayList<>();
                 for (int groupIndex = 0; groupIndex < cdGroups.size(); groupIndex++) {
                     String groupName = cdGroups.get(groupIndex);
                     
@@ -575,19 +586,14 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
                     
                     // 为当前组分配学生
                     for (int i = 0; i < currentGroupStudents && studentIndex < remainingStudents.size(); i++) {
-                        com.physics.entity.User student = remainingStudents.get(studentIndex);
-                        
-                        // 设置分组名称到学生的分组字段
-                        student.setGroupName(groupName);
-                        student.setSemesterId(semesterId);
-                        student.setSuiteId(suiteId);
-                        student.setWeekType(weekType);
-                        userService.updateById(student);
-                        log.debug("剩余学生 {} 分配到分组 {} (学期ID: {}, 实验套ID: {}, 周类型: {}, 第{}组，分配{}人)", 
-                                student.getRealName(), groupName, semesterId, suiteId, weekType, groupIndex + 1, currentGroupStudents);
-                        
+                        User student = remainingStudents.get(studentIndex);
+                        applyGroupAssignment(student, groupName, semesterId, suiteId, weekType);
+                        toUpdate.add(student);
                         studentIndex++;
                     }
+                }
+                if (!toUpdate.isEmpty()) {
+                    userService.updateBatchById(toUpdate);
                 }
             }
             
@@ -622,7 +628,7 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
             }
             
             // 2. 确定周次列表（每组8个实验，单周跳过第1周；双周跳过第2周）
-            com.physics.entity.Semester semester = semesterService.getById(semesterId);
+            Semester semester = semesterService.getById(semesterId);
             if (semester == null || semester.getStartDate() == null || semester.getEndDate() == null) {
                 log.warn("学期信息不完整，无法动态生成周次: semesterId={}", semesterId);
                 return false;
@@ -634,22 +640,24 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
             }
             
             // 3. 按轮换逻辑为每个组分配实验（每组8个实验，分配到8个周次）
-            // 先清理该学期和套件下所有小组的旧记录，然后重新创建
-            for (String groupName : groupList) {
-                com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<GroupExperiment> deleteWrapper = 
-                    new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
+            // 先清理该学期和套件下相关小组、当前周次类型的旧记录，然后重新创建
+            List<String> weekTimeStrings = weeks.stream()
+                    .map(w -> "第" + w + "周")
+                    .collect(Collectors.toList());
+            if (!groupList.isEmpty()) {
+                QueryWrapper<GroupExperiment> deleteWrapper = new QueryWrapper<>();
                 deleteWrapper.eq("semester_id", semesterId)
                            .eq("suite_id", suiteId)
-                           .eq("group_name", groupName);
-                // 只删除当前周次类型的记录
-                List<String> weekTimeStrings = new ArrayList<>();
-                for (Integer w : weeks) {
-                    weekTimeStrings.add("第" + w + "周");
-                }
-                deleteWrapper.in("experiment_time", weekTimeStrings);
+                           .in("group_name", groupList)
+                           .in("experiment_time", weekTimeStrings);
                 groupExperimentService.remove(deleteWrapper);
             }
             
+            // 一次性预取实验地点，避免内层循环逐条查库
+            Map<Long, String> locationMap = experimentService.listByIds(experimentIds).stream()
+                    .filter(e -> e != null && e.getExperimentId() != null && e.getLocation() != null)
+                    .collect(Collectors.toMap(Experiment::getExperimentId, Experiment::getLocation, (a, b) -> a));
+
             List<GroupExperiment> toInsert = new ArrayList<>();
             
             for (int groupIndex = 0; groupIndex < groupList.size(); groupIndex++) {
@@ -676,12 +684,7 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
                     newRecord.setExperimentTime("第" + week + "周");
                     newRecord.setTimeSlot(timeSlot);
                     newRecord.setIsIntroCourse(0); // 默认为普通实验，绪论课由用户在教师设置时手动勾选
-                    
-                    // 获取实验地点
-                    Experiment exp = experimentService.getById(experimentId);
-                    if (exp != null && exp.getLocation() != null) {
-                        newRecord.setLocation(exp.getLocation());
-                    }
+                    newRecord.setLocation(locationMap.get(experimentId));
                     
                     toInsert.add(newRecord);
                 }
@@ -700,35 +703,6 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
         } catch (Exception e) {
             log.error("为小组创建实验安排失败", e);
             return false;
-        }
-    }
-    
-    /**
-     * 根据组别确定固定的时间段
-     * 时间段分配规则：
-     * A组：周一上午、周三上午、周五上午...
-     * B组：周二下午、周四下午...
-     * C组：周二上午、周四上午...
-     * D组：周一下午、周三下午、周五下午...
-     */
-    private String getFixedTimeSlot(String groupName) {
-        // 解析小组名称，获取班级和组别
-        String className = groupName.substring(0, groupName.length() - 1);
-        String groupType = groupName.substring(groupName.length() - 1);
-        
-        // 根据组别确定固定的时间段
-        switch (groupType) {
-            case "A":
-                return "周一上午";
-            case "B":
-                return "周二下午";
-            case "C":
-                return "周二上午";
-            case "D":
-                return "周一下午";
-            default:
-                log.warn("未知的组别: {}, 使用默认时间段", groupType);
-                return "周一上午";
         }
     }
 

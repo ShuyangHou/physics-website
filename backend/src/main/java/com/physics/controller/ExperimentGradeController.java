@@ -242,15 +242,7 @@ public class ExperimentGradeController {
                 empty.put("scheduleClassIds", scheduleClassList);
                 empty.put("weekType", weekType);
                 empty.put("reason", "课表未安排该小组");
-                List<Map<String, Object>> columns = new ArrayList<>();
-                columns.add(createColumn("index", "序号", "60px", "center"));
-                columns.add(createColumn("schoolId", "学号", "120px", "center"));
-                columns.add(createColumn("studentName", "姓名", "100px", "center"));
-                columns.add(createColumn("classId", "班级", "100px", "center"));
-                columns.add(createColumn("groupName", "小组", "100px", "center"));
-                columns.add(createColumn("score", "成绩", "120px", "center"));
-                columns.add(createColumn("status", "状态", "80px", "center"));
-                empty.put("columns", columns);
+                empty.put("columns", buildBasicStudentColumns());
                 return Result.success(empty);
             }
 
@@ -397,15 +389,7 @@ public class ExperimentGradeController {
         }
         
         // 添加表格列配置，便于前端横屏布局
-        List<Map<String, Object>> columns = new ArrayList<>();
-        columns.add(createColumn("index", "序号", "60px", "center"));
-        columns.add(createColumn("schoolId", "学号", "120px", "center"));
-        columns.add(createColumn("studentName", "姓名", "100px", "center"));
-        columns.add(createColumn("classId", "班级", "100px", "center"));
-        columns.add(createColumn("groupName", "小组", "100px", "center"));
-        columns.add(createColumn("score", "成绩", "120px", "center"));
-        columns.add(createColumn("status", "状态", "80px", "center"));
-        response.put("columns", columns);
+        response.put("columns", buildBasicStudentColumns());
 
         return Result.success(response);
     }
@@ -575,6 +559,49 @@ public class ExperimentGradeController {
         column.put("align", align);
         column.put("fixed", false);
         return column;
+    }
+
+    /**
+     * 成绩录入表格的基础列配置（序号/学号/姓名/班级/小组/成绩/状态）。
+     */
+    private List<Map<String, Object>> buildBasicStudentColumns() {
+        List<Map<String, Object>> columns = new ArrayList<>();
+        columns.add(createColumn("index", "序号", "60px", "center"));
+        columns.add(createColumn("schoolId", "学号", "120px", "center"));
+        columns.add(createColumn("studentName", "姓名", "100px", "center"));
+        columns.add(createColumn("classId", "班级", "100px", "center"));
+        columns.add(createColumn("groupName", "小组", "100px", "center"));
+        columns.add(createColumn("score", "成绩", "120px", "center"));
+        columns.add(createColumn("status", "状态", "80px", "center"));
+        return columns;
+    }
+
+    /**
+     * 批量按ID预取用户，返回 userId -> User 映射，避免循环内逐条查库。
+     */
+    private Map<Long, User> loadUserMapByIds(java.util.Collection<Long> ids) {
+        List<Long> distinct = ids == null ? new ArrayList<>() : ids.stream()
+                .filter(id -> id != null).distinct().collect(Collectors.toList());
+        if (distinct.isEmpty()) {
+            return new HashMap<>();
+        }
+        return userService.listByIds(distinct).stream()
+                .filter(u -> u != null && u.getUserId() != null)
+                .collect(Collectors.toMap(User::getUserId, u -> u, (a, b) -> a));
+    }
+
+    /**
+     * 批量按ID预取实验，返回 experimentId -> Experiment 映射，避免循环内逐条查库。
+     */
+    private Map<Long, Experiment> loadExperimentMapByIds(java.util.Collection<Long> ids) {
+        List<Long> distinct = ids == null ? new ArrayList<>() : ids.stream()
+                .filter(id -> id != null).distinct().collect(Collectors.toList());
+        if (distinct.isEmpty()) {
+            return new HashMap<>();
+        }
+        return experimentService.listByIds(distinct).stream()
+                .filter(e -> e != null && e.getExperimentId() != null)
+                .collect(Collectors.toMap(Experiment::getExperimentId, e -> e, (a, b) -> a));
     }
     
     /**
@@ -1013,35 +1040,13 @@ public class ExperimentGradeController {
 
         // 批量查询用户和实验信息，避免N+1查询问题
         List<ExperimentGrade> grades = result.getRecords();
-        
-        // 批量查询所有相关用户
-        List<Long> userIds = grades.stream()
-            .map(ExperimentGrade::getUserId)
-            .filter(id -> id != null)
-            .distinct()
-            .collect(Collectors.toList());
-        Map<Long, User> userMap = new HashMap<>();
-        if (!userIds.isEmpty()) {
-            List<User> users = userService.listByIds(userIds);
-            userMap = users.stream().collect(Collectors.toMap(User::getUserId, u -> u));
-        }
-        
-        // 批量查询所有相关实验
-        List<Long> experimentIds = grades.stream()
-            .map(ExperimentGrade::getExperimentId)
-            .filter(id -> id != null)
-            .distinct()
-            .collect(Collectors.toList());
-        Map<Long, Experiment> experimentMap = new HashMap<>();
-        if (!experimentIds.isEmpty()) {
-            List<Experiment> experiments = experimentService.listByIds(experimentIds);
-            experimentMap = experiments.stream().collect(Collectors.toMap(Experiment::getExperimentId, e -> e));
-        }
-        
+
+        Map<Long, User> finalUserMap = loadUserMapByIds(grades.stream()
+                .map(ExperimentGrade::getUserId).collect(Collectors.toList()));
+        Map<Long, Experiment> finalExperimentMap = loadExperimentMapByIds(grades.stream()
+                .map(ExperimentGrade::getExperimentId).collect(Collectors.toList()));
+
         // 转换为DTO
-        final Map<Long, User> finalUserMap = userMap;
-        final Map<Long, Experiment> finalExperimentMap = experimentMap;
-        
         List<GradeDTO> dtoList = grades.stream().map(grade -> {
             GradeDTO dto = new GradeDTO();
             dto.setGradeId(grade.getGradeId());
@@ -1353,10 +1358,15 @@ public class ExperimentGradeController {
         Map<String, Object> result = new HashMap<>();
         int successCount = 0;
         int failCount = 0;
-        
+
+        // 一次性预取待锁定成绩，避免逐条查库
+        Map<Long, ExperimentGrade> gradeMap = gradeService.listByIds(gradeIds).stream()
+                .filter(g -> g != null && g.getGradeId() != null)
+                .collect(Collectors.toMap(ExperimentGrade::getGradeId, g -> g, (a, b) -> a));
+
         for (Long gradeId : gradeIds) {
             try {
-                ExperimentGrade grade = gradeService.getById(gradeId);
+                ExperimentGrade grade = gradeMap.get(gradeId);
                 if (grade != null) {
                     grade.setIsLocked(true);
                     if (gradeService.updateById(grade)) {
@@ -1441,45 +1451,21 @@ public class ExperimentGradeController {
         header.createCell(9).setCellValue("套件ID");
         header.createCell(10).setCellValue("是否冻结");
 
-        List<Long> studentIds = grades.stream()
-                .map(ExperimentGrade::getUserId)
-                .filter(id -> id != null)
-                .distinct()
-                .collect(Collectors.toList());
-        Map<Long, User> studentMap = new HashMap<>();
-        if (!studentIds.isEmpty()) {
-            List<User> students = userService.listByIds(studentIds);
-            studentMap = students.stream().collect(Collectors.toMap(User::getUserId, u -> u));
+        Set<Long> userIds = new HashSet<>();
+        for (ExperimentGrade g : grades) {
+            if (g.getUserId() != null) userIds.add(g.getUserId());
+            if (g.getTeacherId() != null) userIds.add(g.getTeacherId());
         }
-
-        List<Long> teacherIds = grades.stream()
-                .map(ExperimentGrade::getTeacherId)
-                .filter(id -> id != null)
-                .distinct()
-                .collect(Collectors.toList());
-        Map<Long, User> teacherMap = new HashMap<>();
-        if (!teacherIds.isEmpty()) {
-            List<User> teachers = userService.listByIds(teacherIds);
-            teacherMap = teachers.stream().collect(Collectors.toMap(User::getUserId, u -> u));
-        }
-
-        List<Long> experimentIds = grades.stream()
-                .map(ExperimentGrade::getExperimentId)
-                .filter(id -> id != null)
-                .distinct()
-                .collect(Collectors.toList());
-        Map<Long, Experiment> experimentMap = new HashMap<>();
-        if (!experimentIds.isEmpty()) {
-            List<Experiment> experiments = experimentService.listByIds(experimentIds);
-            experimentMap = experiments.stream().collect(Collectors.toMap(Experiment::getExperimentId, e -> e));
-        }
+        Map<Long, User> userMap = loadUserMapByIds(userIds);
+        Map<Long, Experiment> experimentMap = loadExperimentMapByIds(grades.stream()
+                .map(ExperimentGrade::getExperimentId).collect(Collectors.toList()));
 
         int rowIdx = 1;
         for (ExperimentGrade g : grades) {
             Row r = sheet.createRow(rowIdx++);
-            User stu = g.getUserId() == null ? null : studentMap.get(g.getUserId());
+            User stu = g.getUserId() == null ? null : userMap.get(g.getUserId());
             Experiment exp = g.getExperimentId() == null ? null : experimentMap.get(g.getExperimentId());
-            User teacher = g.getTeacherId() == null ? null : teacherMap.get(g.getTeacherId());
+            User teacher = g.getTeacherId() == null ? null : userMap.get(g.getTeacherId());
 
             r.createCell(0).setCellValue(stu != null && stu.getSchoolId() != null ? stu.getSchoolId() : "");
             r.createCell(1).setCellValue(stu != null && stu.getRealName() != null ? stu.getRealName() : "");
@@ -1986,13 +1972,23 @@ public class ExperimentGradeController {
         }
         
         List<ExperimentGrade> grades = gradeService.list(wrapper);
-        
+
+        // 批量预取学生/教师/实验，避免逐条查库（N+1）
+        Set<Long> userIds = new HashSet<>();
+        for (ExperimentGrade g : grades) {
+            if (g.getUserId() != null) userIds.add(g.getUserId());
+            if (g.getTeacherId() != null) userIds.add(g.getTeacherId());
+        }
+        Map<Long, User> userMap = loadUserMapByIds(userIds);
+        Map<Long, Experiment> experimentMap = loadExperimentMapByIds(grades.stream()
+                .map(ExperimentGrade::getExperimentId).collect(Collectors.toList()));
+
         // 转换为导出格式
         List<Map<String, Object>> exportData = grades.stream().map(grade -> {
             Map<String, Object> item = new HashMap<>();
             
             // 获取学生信息
-            User student = userService.getById(grade.getUserId());
+            User student = grade.getUserId() == null ? null : userMap.get(grade.getUserId());
             if (student != null) {
                 item.put("studentName", student.getRealName());
                 item.put("schoolId", student.getSchoolId());
@@ -2004,14 +2000,14 @@ public class ExperimentGradeController {
             }
             
             // 获取实验信息
-            Experiment experiment = experimentService.getById(grade.getExperimentId());
+            Experiment experiment = grade.getExperimentId() == null ? null : experimentMap.get(grade.getExperimentId());
             if (experiment != null) {
                 item.put("experimentName", experiment.getExperimentName());
             }
 
             // 获取教师信息
             if (grade.getTeacherId() != null) {
-                User teacher = userService.getById(grade.getTeacherId());
+                User teacher = userMap.get(grade.getTeacherId());
                 if (teacher != null) {
                     item.put("teacherName", teacher.getRealName());
                 }

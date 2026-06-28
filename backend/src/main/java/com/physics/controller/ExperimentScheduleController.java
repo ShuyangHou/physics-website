@@ -148,6 +148,66 @@ public class ExperimentScheduleController {
                 .collect(Collectors.toMap(User::getUserId, User::getRealName, (a, b) -> a));
     }
 
+    /**
+     * 批量预取课表涉及的所有教师（含绪论课教师），避免后续逐条查库。
+     */
+    private Map<Long, User> loadUserMap(List<ExperimentSchedule> schedules) {
+        Set<Long> ids = new HashSet<>();
+        if (schedules != null) {
+            for (ExperimentSchedule s : schedules) {
+                ids.addAll(parseTeacherIds(s.getTeacherIds()));
+                if (s.getIntroTeacherId() != null) ids.add(s.getIntroTeacherId());
+            }
+        }
+        if (ids.isEmpty()) {
+            return new HashMap<>();
+        }
+        return userService.listByIds(ids).stream()
+                .filter(u -> u != null && u.getUserId() != null)
+                .collect(Collectors.toMap(User::getUserId, u -> u, (a, b) -> a));
+    }
+
+    /**
+     * 批量预取课表涉及的学期名称，避免逐条查库。
+     */
+    private Map<Long, String> loadSemesterNameMap(List<ExperimentSchedule> schedules) {
+        Set<Long> ids = new HashSet<>();
+        if (schedules != null) {
+            for (ExperimentSchedule s : schedules) {
+                if (s.getSemesterId() != null) ids.add(s.getSemesterId());
+            }
+        }
+        if (ids.isEmpty()) {
+            return new HashMap<>();
+        }
+        return semesterService.listByIds(ids).stream()
+                .filter(sem -> sem != null && sem.getSemesterId() != null && sem.getSemesterName() != null)
+                .collect(Collectors.toMap(Semester::getSemesterId, Semester::getSemesterName, (a, b) -> a));
+    }
+
+    /**
+     * 构建用于展示/导出的教师姓名列表：普通教师 + 绪论课教师（带"(绪论课)"后缀，去重）。
+     */
+    private List<String> buildTeacherDisplayNames(ExperimentSchedule s, Map<Long, User> userMap) {
+        List<String> names = new ArrayList<>();
+        for (Long tid : parseTeacherIds(s.getTeacherIds())) {
+            User t = userMap.get(tid);
+            if (t != null && t.getRealName() != null) {
+                names.add(t.getRealName());
+            }
+        }
+        if (s.getIntroTeacherId() != null) {
+            User intro = userMap.get(s.getIntroTeacherId());
+            if (intro != null && intro.getRealName() != null) {
+                String introName = intro.getRealName() + "(绪论课)";
+                if (!names.contains(introName)) {
+                    names.add(introName);
+                }
+            }
+        }
+        return names;
+    }
+
     private List<String> resolveTeacherNames(String teacherIds, Map<Long, String> teacherNameMap) {
         List<String> teacherNames = new ArrayList<>();
         for (Long teacherId : parseTeacherIds(teacherIds)) {
@@ -162,6 +222,40 @@ public class ExperimentScheduleController {
     private String joinList(List<String> list) {
         if (list == null || list.isEmpty()) return "";
         return String.join(",", list);
+    }
+
+    /**
+     * 解析 group_ids（"[A,B]" 或 "A,B"）为去空白的小组名列表。
+     */
+    private List<String> parseGroupNames(String groupIds) {
+        List<String> groupNames = new ArrayList<>();
+        if (groupIds == null || groupIds.trim().isEmpty()) {
+            return groupNames;
+        }
+        String cleaned = groupIds.replaceAll("[\\[\\]]", "");
+        for (String name : cleaned.split(",")) {
+            if (name != null && !name.trim().isEmpty()) {
+                groupNames.add(name.trim());
+            }
+        }
+        return groupNames;
+    }
+
+    /**
+     * 构建课表 DTO 的公共字段（教师姓名从批量预取的 map 取，避免逐条查库）。
+     * 各接口在此基础上按需补充 weekType / suiteId / 绪论课等字段。
+     */
+    private ScheduleDTO baseScheduleDTO(ExperimentSchedule schedule, Map<Long, String> teacherNameMap) {
+        ScheduleDTO dto = new ScheduleDTO();
+        dto.setScheduleId(schedule.getScheduleId());
+        dto.setTeacherIds(schedule.getTeacherIds());
+        dto.setGroupIds(schedule.getGroupIds());
+        dto.setExperimentTime(schedule.getExperimentTime());
+        dto.setCreateTime(schedule.getCreateTime());
+        dto.setUpdateTime(schedule.getUpdateTime());
+        dto.setTeacherNames(resolveTeacherNames(schedule.getTeacherIds(), teacherNameMap));
+        dto.setGroupNames(parseGroupNames(schedule.getGroupIds()));
+        return dto;
     }
 
     private String buildWeekTypeLabel(Integer weekType) {
@@ -195,38 +289,14 @@ public class ExperimentScheduleController {
         header.createCell(3).setCellValue("班级");
         header.createCell(4).setCellValue("小组");
 
+        Map<Long, User> userMap = loadUserMap(schedules);
+
         int rowIdx = 1;
         for (ExperimentSchedule s : schedules) {
             Row r = sheet.createRow(rowIdx++);
             r.createCell(0).setCellValue(buildWeekTypeLabel(s.getWeekType()));
             r.createCell(1).setCellValue(s.getExperimentTime() == null ? "" : s.getExperimentTime());
-
-            List<String> teacherNames = new ArrayList<>();
-            List<String> teacherIds = parseCsvOrJsonLikeIds(s.getTeacherIds());
-            for (String idStr : teacherIds) {
-                try {
-                    Long tid = Long.parseLong(idStr);
-                    User t = userService.getById(tid);
-                    if (t != null && t.getRealName() != null) {
-                        teacherNames.add(t.getRealName());
-                    }
-                } catch (Exception ignore) {
-                }
-            }
-            if (s.getIntroTeacherId() != null) {
-                try {
-                    User intro = userService.getById(s.getIntroTeacherId());
-                    if (intro != null && intro.getRealName() != null) {
-                        String introName = intro.getRealName() + "(绪论课)";
-                        if (!teacherNames.contains(introName)) {
-                            teacherNames.add(introName);
-                        }
-                    }
-                } catch (Exception ignore) {
-                }
-            }
-
-            r.createCell(2).setCellValue(joinList(teacherNames));
+            r.createCell(2).setCellValue(joinList(buildTeacherDisplayNames(s, userMap)));
             r.createCell(3).setCellValue(s.getClassIds() == null ? "" : s.getClassIds());
             r.createCell(4).setCellValue(joinList(parseCsvOrJsonLikeIds(s.getGroupIds())));
         }
@@ -264,39 +334,8 @@ public class ExperimentScheduleController {
 
         // 转换为DTO
         List<ScheduleDTO> dtoList = result.getRecords().stream().map(schedule -> {
-            
-            ScheduleDTO dto = new ScheduleDTO();
-            dto.setScheduleId(schedule.getScheduleId());
-            dto.setTeacherIds(schedule.getTeacherIds());
-            dto.setGroupIds(schedule.getGroupIds());
-            dto.setExperimentTime(schedule.getExperimentTime());
-            try { dto.getClass(); } catch (Exception ignored) {}
-            // 透传 weekType 到前端（如需）
-            try {
-                java.lang.reflect.Method m = dto.getClass().getMethod("setWeekType", Integer.class);
-                m.invoke(dto, schedule.getWeekType());
-            } catch (Exception ignored) {}
-            dto.setCreateTime(schedule.getCreateTime());
-            dto.setUpdateTime(schedule.getUpdateTime());
-            
-            dto.setTeacherNames(resolveTeacherNames(schedule.getTeacherIds(), teacherNameMap));
-            
-            // 获取小组信息 - 直接从groupIds字符串解析
-            if (schedule.getGroupIds() != null && !schedule.getGroupIds().trim().isEmpty()) {
-                String groupIdsStr = schedule.getGroupIds().replaceAll("[\\[\\]]", "");
-                List<String> groupNames = new ArrayList<>();
-                if (!groupIdsStr.isEmpty()) {
-                    String[] groupNamesArray = groupIdsStr.split(",");
-                    for (String groupName : groupNamesArray) {
-                        if (groupName != null && !groupName.trim().isEmpty()) {
-                            groupNames.add(groupName.trim());
-                        }
-                    }
-                }
-
-                dto.setGroupNames(groupNames);
-            }
-            
+            ScheduleDTO dto = baseScheduleDTO(schedule, teacherNameMap);
+            dto.setWeekType(schedule.getWeekType());
             return dto;
         }).collect(Collectors.toList());
         
@@ -359,6 +398,9 @@ public class ExperimentScheduleController {
         wrapper.orderByAsc("semester_id").orderByAsc("week_type").orderByAsc("experiment_time");
         List<ExperimentSchedule> schedules = scheduleService.list(wrapper);
 
+        Map<Long, User> userMap = loadUserMap(schedules);
+        Map<Long, String> semesterNameMap = loadSemesterNameMap(schedules);
+
         List<Map<String, Object>> res = new ArrayList<>();
         for (ExperimentSchedule s : schedules) {
             List<String> groupIds = parseCsvOrJsonLikeIds(s.getGroupIds());
@@ -384,34 +426,9 @@ public class ExperimentScheduleController {
             row.put("weekTypeLabel", buildWeekTypeLabel(s.getWeekType()));
             row.put("experimentTime", s.getExperimentTime());
 
-            Semester sem = null;
-            try { sem = s.getSemesterId() == null ? null : semesterService.getById(s.getSemesterId()); } catch (Exception ignore) {}
-            row.put("semesterName", sem == null ? "" : sem.getSemesterName());
+            row.put("semesterName", s.getSemesterId() == null ? "" : semesterNameMap.getOrDefault(s.getSemesterId(), ""));
 
-            List<String> teacherNames = new ArrayList<>();
-            List<String> teacherIds = parseCsvOrJsonLikeIds(s.getTeacherIds());
-            for (String idStr : teacherIds) {
-                try {
-                    Long tid = Long.parseLong(idStr);
-                    User t = userService.getById(tid);
-                    if (t != null && t.getRealName() != null) {
-                        teacherNames.add(t.getRealName());
-                    }
-                } catch (Exception ignore) {
-                }
-            }
-            if (s.getIntroTeacherId() != null) {
-                try {
-                    User intro = userService.getById(s.getIntroTeacherId());
-                    if (intro != null && intro.getRealName() != null) {
-                        String introName = intro.getRealName() + "(绪论课)";
-                        if (!teacherNames.contains(introName)) {
-                            teacherNames.add(introName);
-                        }
-                    }
-                } catch (Exception ignore) {
-                }
-            }
+            List<String> teacherNames = buildTeacherDisplayNames(s, userMap);
             row.put("teacherNames", teacherNames);
             row.put("teachers", joinList(teacherNames));
             row.put("scheduleId", s.getScheduleId());
@@ -459,56 +476,15 @@ public class ExperimentScheduleController {
         
         Page<ExperimentSchedule> result = scheduleService.page(page, wrapper);
         
+        Map<Long, String> teacherNameMap = loadTeacherNameMap(result.getRecords());
+
         // 转换为DTO
         List<ScheduleDTO> dtoList = result.getRecords().stream().map(schedule -> {
-            ScheduleDTO dto = new ScheduleDTO();
-            dto.setScheduleId(schedule.getScheduleId());
-            dto.setTeacherIds(schedule.getTeacherIds());
-            dto.setGroupIds(schedule.getGroupIds());
-            dto.setExperimentTime(schedule.getExperimentTime());
+            ScheduleDTO dto = baseScheduleDTO(schedule, teacherNameMap);
             dto.setWeekType(schedule.getWeekType());
             dto.setSuiteId(schedule.getSuiteId());
             // 设置是否为绪论课：如果有绪论课教师ID，则为绪论课
             dto.setIsIntroCourse(schedule.getIntroTeacherId() != null ? 1 : 0);
-            dto.setCreateTime(schedule.getCreateTime());
-            dto.setUpdateTime(schedule.getUpdateTime());
-            
-            // 获取教师信息
-            if (schedule.getTeacherIds() != null && !schedule.getTeacherIds().trim().isEmpty()) {
-                String teacherIdsStr = schedule.getTeacherIds().replaceAll("[\\[\\]]", "");
-                List<String> teacherNames = new ArrayList<>();
-                if (!teacherIdsStr.isEmpty()) {
-                    String[] ids = teacherIdsStr.split(",");
-                    for (String idStr : ids) {
-                        try {
-                            Long id = Long.parseLong(idStr.trim());
-                            User teacher = userService.getById(id);
-                            if (teacher != null) {
-                                teacherNames.add(teacher.getRealName());
-                            }
-                        } catch (NumberFormatException e) {
-                            // 忽略无效的ID
-                        }
-                    }
-                }
-                dto.setTeacherNames(teacherNames);
-            }
-            
-            // 获取小组信息
-            if (schedule.getGroupIds() != null && !schedule.getGroupIds().trim().isEmpty()) {
-                String groupIdsStr = schedule.getGroupIds().replaceAll("[\\[\\]]", "");
-                List<String> groupNames = new ArrayList<>();
-                if (!groupIdsStr.isEmpty()) {
-                    String[] groupNamesArray = groupIdsStr.split(",");
-                    for (String groupName : groupNamesArray) {
-                        if (groupName != null && !groupName.trim().isEmpty()) {
-                            groupNames.add(groupName.trim());
-                        }
-                    }
-                }
-                dto.setGroupNames(groupNames);
-            }
-            
             return dto;
         }).collect(Collectors.toList());
         
@@ -532,56 +508,15 @@ public class ExperimentScheduleController {
         
         Page<ExperimentSchedule> result = scheduleService.page(page, wrapper);
         
+        Map<Long, String> teacherNameMap = loadTeacherNameMap(result.getRecords());
+
         // 转换为DTO
         List<ScheduleDTO> dtoList = result.getRecords().stream().map(schedule -> {
-            ScheduleDTO dto = new ScheduleDTO();
-            dto.setScheduleId(schedule.getScheduleId());
-            dto.setTeacherIds(schedule.getTeacherIds());
-            dto.setGroupIds(schedule.getGroupIds());
-            dto.setExperimentTime(schedule.getExperimentTime());
+            ScheduleDTO dto = baseScheduleDTO(schedule, teacherNameMap);
             dto.setWeekType(schedule.getWeekType());
             dto.setSuiteId(schedule.getSuiteId());
             // 学生课表不显示绪论课信息，始终设为0
             dto.setIsIntroCourse(0);
-            dto.setCreateTime(schedule.getCreateTime());
-            dto.setUpdateTime(schedule.getUpdateTime());
-            
-            // 获取教师信息
-            if (schedule.getTeacherIds() != null && !schedule.getTeacherIds().trim().isEmpty()) {
-                String teacherIdsStr = schedule.getTeacherIds().replaceAll("[\\[\\]]", "");
-                List<String> teacherNames = new ArrayList<>();
-                if (!teacherIdsStr.isEmpty()) {
-                    String[] ids = teacherIdsStr.split(",");
-                    for (String idStr : ids) {
-                        try {
-                            Long id = Long.parseLong(idStr.trim());
-                            User teacher = userService.getById(id);
-                            if (teacher != null) {
-                                teacherNames.add(teacher.getRealName());
-                            }
-                        } catch (NumberFormatException e) {
-                            // 忽略无效的ID
-                        }
-                    }
-                }
-                dto.setTeacherNames(teacherNames);
-            }
-            
-            // 获取小组信息
-            if (schedule.getGroupIds() != null && !schedule.getGroupIds().trim().isEmpty()) {
-                String groupIdsStr = schedule.getGroupIds().replaceAll("[\\[\\]]", "");
-                List<String> groupNames = new ArrayList<>();
-                if (!groupIdsStr.isEmpty()) {
-                    String[] groupNamesArray = groupIdsStr.split(",");
-                    for (String groupName : groupNamesArray) {
-                        if (groupName != null && !groupName.trim().isEmpty()) {
-                            groupNames.add(groupName.trim());
-                        }
-                    }
-                }
-                dto.setGroupNames(groupNames);
-            }
-            
             return dto;
         }).collect(Collectors.toList());
         
@@ -615,36 +550,12 @@ public class ExperimentScheduleController {
 
         // 转换为DTO
         List<ScheduleDTO> dtoList = schedules.stream().map(schedule -> {
-            ScheduleDTO dto = new ScheduleDTO();
-            dto.setScheduleId(schedule.getScheduleId());
-            dto.setTeacherIds(schedule.getTeacherIds());
-            dto.setGroupIds(schedule.getGroupIds());
-            dto.setExperimentTime(schedule.getExperimentTime());
+            ScheduleDTO dto = baseScheduleDTO(schedule, teacherNameMap);
             dto.setWeekType(schedule.getWeekType());
             dto.setSuiteId(schedule.getSuiteId()); // 添加实验套ID
             // 设置是否为绪论课：如果有绪论课教师ID，则为绪论课
             dto.setIsIntroCourse(schedule.getIntroTeacherId() != null ? 1 : 0);
             dto.setIntroTeacherId(schedule.getIntroTeacherId());
-            dto.setCreateTime(schedule.getCreateTime());
-            dto.setUpdateTime(schedule.getUpdateTime());
-            
-            dto.setTeacherNames(resolveTeacherNames(schedule.getTeacherIds(), teacherNameMap));
-            
-            // 获取小组信息
-            if (schedule.getGroupIds() != null && !schedule.getGroupIds().trim().isEmpty()) {
-                String groupIdsStr = schedule.getGroupIds().replaceAll("[\\[\\]]", "");
-                List<String> groupNames = new ArrayList<>();
-                if (!groupIdsStr.isEmpty()) {
-                    String[] groupNamesArray = groupIdsStr.split(",");
-                    for (String groupName : groupNamesArray) {
-                        if (groupName != null && !groupName.trim().isEmpty()) {
-                            groupNames.add(groupName.trim());
-                        }
-                    }
-                }
-                dto.setGroupNames(groupNames);
-            }
-            
             return dto;
         }).collect(Collectors.toList());
         
@@ -898,6 +809,11 @@ public class ExperimentScheduleController {
                 return Result.error("teacherIds 非法");
             }
 
+            // 一次性预取所选教师，循环内直接复用，避免逐条查库
+            Map<Long, User> teacherMap = userService.listByIds(selectedTeacherIds).stream()
+                    .filter(u -> u != null && u.getUserId() != null)
+                    .collect(Collectors.toMap(User::getUserId, u -> u, (a, b) -> a));
+
             // 5. 按实验ID分派教师：1-2→teacher1, 3-4→teacher2, ...
             for (GroupExperiment ge : groupExperiments) {
                 if (ge.getExperimentId() == null) {
@@ -909,7 +825,7 @@ public class ExperimentScheduleController {
                         idx = selectedTeacherIds.size() - 1;
                     }
                     Long tid = selectedTeacherIds.get(idx);
-                    User t = userService.getById(tid);
+                    User t = teacherMap.get(tid);
                     if (t != null) {
                         ge.setTeacherId(t.getUserId());
                         ge.setTeacherName(t.getRealName()); // 同时更新教师姓名

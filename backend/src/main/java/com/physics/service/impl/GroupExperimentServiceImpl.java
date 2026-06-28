@@ -11,6 +11,7 @@ import com.physics.service.ExperimentService;
 import com.physics.service.SemesterService;
 import com.physics.service.UserService;
 import com.physics.entity.User;
+import com.physics.entity.Semester;
 import com.physics.dto.TeacherAssignmentRequest;
 import com.physics.entity.ExperimentSchedule;
 import com.physics.mapper.ExperimentScheduleMapper;
@@ -143,6 +144,12 @@ public class GroupExperimentServiceImpl extends ServiceImpl<GroupExperimentMappe
         java.util.List<GroupExperiment> toInsert = new java.util.ArrayList<>();
         java.util.List<GroupExperiment> toUpdate = new java.util.ArrayList<>();
 
+        // 预取本次涉及的实验地点，避免循环内逐条查库
+        Map<Long, String> locationMap = loadLocationMap(items.stream()
+                .filter(it -> it != null)
+                .map(it -> it.experimentId)
+                .collect(Collectors.toList()));
+
         for (Item it : items) {
             if (it == null) {
                 continue;
@@ -172,9 +179,8 @@ public class GroupExperimentServiceImpl extends ServiceImpl<GroupExperimentMappe
                 ne.setTimeSlot(ts);
                 // 设置实验与位置（必有experimentId）
                 ne.setExperimentId(it.experimentId);
-                Experiment exp = experimentService.getById(it.experimentId);
-                if (exp != null && exp.getLocation() != null) {
-                    ne.setLocation(exp.getLocation());
+                if (locationMap.containsKey(it.experimentId)) {
+                    ne.setLocation(locationMap.get(it.experimentId));
                 }
                 if (it.teacherId != null) {
                     ne.setTeacherId(it.teacherId);
@@ -191,10 +197,9 @@ public class GroupExperimentServiceImpl extends ServiceImpl<GroupExperimentMappe
                 }
                 if (it.experimentId != null) {
                     ge.setExperimentId(it.experimentId);
-                    // 获取实验地点并设置
-                    Experiment exp = experimentService.getById(it.experimentId);
-                    if (exp != null && exp.getLocation() != null) {
-                        ge.setLocation(exp.getLocation());
+                    // 设置实验地点
+                    if (locationMap.containsKey(it.experimentId)) {
+                        ge.setLocation(locationMap.get(it.experimentId));
                     }
                 }
                 if (it.teacherId != null) {
@@ -318,6 +323,15 @@ public class GroupExperimentServiceImpl extends ServiceImpl<GroupExperimentMappe
         java.util.List<GroupExperiment> toInsert = new java.util.ArrayList<>();
         java.util.List<GroupExperiment> toUpdate = new java.util.ArrayList<>();
 
+        // 实验地点只需查一次（experimentId 全程不变），避免在双重循环里反复查库
+        String location = null;
+        if (experimentId != null) {
+            Experiment exp = experimentService.getById(experimentId);
+            if (exp != null) {
+                location = exp.getLocation();
+            }
+        }
+
         for (String g : normGroups) {
             for (String w : normWeeks) {
                 String key = compositeKey(g, w, semesterId, suiteId);
@@ -330,22 +344,14 @@ public class GroupExperimentServiceImpl extends ServiceImpl<GroupExperimentMappe
                     ne.setSuiteId(suiteId);
                     if (experimentId != null) {
                         ne.setExperimentId(experimentId);
-                        // 获取实验地点并设置
-                        Experiment exp = experimentService.getById(experimentId);
-                        if (exp != null && exp.getLocation() != null) {
-                            ne.setLocation(exp.getLocation());
-                        }
+                        if (location != null) ne.setLocation(location);
                     }
                     if (teacherId != null) ne.setTeacherId(teacherId);
                     toInsert.add(ne);
                 } else {
                     if (experimentId != null) {
                         ge.setExperimentId(experimentId);
-                        // 获取实验地点并设置
-                        Experiment exp = experimentService.getById(experimentId);
-                        if (exp != null && exp.getLocation() != null) {
-                            ge.setLocation(exp.getLocation());
-                        }
+                        if (location != null) ge.setLocation(location);
                     }
                     if (teacherId != null) ge.setTeacherId(teacherId);
                     toUpdate.add(ge);
@@ -356,6 +362,22 @@ public class GroupExperimentServiceImpl extends ServiceImpl<GroupExperimentMappe
         boolean okInsert = toInsert.isEmpty() || this.saveBatch(toInsert);
         boolean okUpdate = toUpdate.isEmpty() || this.updateBatchById(toUpdate);
         return okInsert && okUpdate;
+    }
+
+    /**
+     * 批量预取实验地点（仅保留 location 非空的实验），避免循环内逐条查库。
+     */
+    private Map<Long, String> loadLocationMap(List<Long> experimentIds) {
+        List<Long> ids = experimentIds == null ? new ArrayList<>() : experimentIds.stream()
+                .filter(id -> id != null)
+                .distinct()
+                .collect(Collectors.toList());
+        if (ids.isEmpty()) {
+            return new java.util.HashMap<>();
+        }
+        return experimentService.listByIds(ids).stream()
+                .filter(e -> e != null && e.getExperimentId() != null && e.getLocation() != null)
+                .collect(Collectors.toMap(Experiment::getExperimentId, Experiment::getLocation, (a, b) -> a));
     }
 
     // 组合键：用于内存中判重 (group_name, experiment_time, semester_id, suite_id)
@@ -392,7 +414,7 @@ public class GroupExperimentServiceImpl extends ServiceImpl<GroupExperimentMappe
         if (semesterId == null || suiteId == null || weekType == null || timeSlot == null || timeSlot.trim().isEmpty()) return false;
         if (groupNames == null || groupNames.isEmpty()) return false;
         try {
-            com.physics.entity.Semester semester = semesterService.getById(semesterId);
+            Semester semester = semesterService.getById(semesterId);
             if (semester == null || semester.getStartDate() == null || semester.getEndDate() == null) return false;
 
             List<Integer> weeks = WeekUtils.getTeachingWeeksRuleB(semester.getStartDate(), semester.getEndDate(), weekType);
@@ -502,7 +524,7 @@ public class GroupExperimentServiceImpl extends ServiceImpl<GroupExperimentMappe
             }
 
             // 计算该 weekType 的周次列表
-            com.physics.entity.Semester semester = semesterService.getById(request.getSemesterId());
+            Semester semester = semesterService.getById(request.getSemesterId());
             if (semester == null || semester.getStartDate() == null || semester.getEndDate() == null) {
                 log.warn("学期信息不完整，无法动态生成周次: semesterId={}", request.getSemesterId());
                 return false;
@@ -561,54 +583,6 @@ public class GroupExperimentServiceImpl extends ServiceImpl<GroupExperimentMappe
         } catch (Exception e) {
             log.error("更新GroupExperiment表教师分配失败", e);
             return false;
-        }
-    }
-    
-    /**
-     * 更新GroupExperiment表中的教师分配
-     */
-    private void updateGroupExperimentTeacherAssignment(Long semesterId, Long suiteId, Long experimentId, 
-                                                      Long teacherId, Integer weekType, Integer isIntroCourse) {
-        try {
-            // 根据weekType确定具体的周次
-            com.physics.entity.Semester semester = semesterService.getById(semesterId);
-            if (semester == null || semester.getStartDate() == null || semester.getEndDate() == null) {
-                log.warn("学期信息不完整，无法动态生成周次: semesterId={}", semesterId);
-                return;
-            }
-            List<Integer> weeks = WeekUtils.getTeachingWeeksRuleB(semester.getStartDate(), semester.getEndDate(), weekType);
-            if (weeks.isEmpty()) {
-                log.warn("动态生成周次为空: semesterId={}, weekType={}", semesterId, weekType);
-                return;
-            }
-            
-            // 为每个周次更新对应的GroupExperiment记录
-            for (Integer week : weeks) {
-                // 构建具体的周次字符串，如"第3周"
-                String experimentTime = String.format("第%d周", week);
-                
-                // 查找特定周次的GroupExperiment记录
-                QueryWrapper<GroupExperiment> wrapper = new QueryWrapper<>();
-                wrapper.eq("semester_id", semesterId)
-                       .eq("suite_id", suiteId)
-                       .eq("experiment_id", experimentId)
-                       .eq("experiment_time", experimentTime);
-                
-                List<GroupExperiment> records = this.list(wrapper);
-                
-                // 更新该周次的所有记录（可能多个小组在同一周做同一个实验）
-                for (GroupExperiment record : records) {
-                    record.setTeacherId(teacherId);
-                    // 更新绪论课标记
-                    if (isIntroCourse != null) {
-                        record.setIsIntroCourse(isIntroCourse);
-                    }
-                    this.updateById(record);
-                }
-            }
-            
-        } catch (Exception e) {
-            log.error("更新GroupExperiment教师分配失败: experimentId={}, teacherId={}", experimentId, teacherId, e);
         }
     }
     
