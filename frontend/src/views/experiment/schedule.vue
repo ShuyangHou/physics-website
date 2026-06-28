@@ -4013,20 +4013,20 @@ const printTeacherSchedule = async () => {
             body{font-family:'Microsoft YaHei','SimSun',Arial,sans-serif !important;margin:8px !important;background:#fff !important;font-size:13px !important;line-height:1.5 !important}
             .suite-schedule{margin-bottom:30px;page-break-after:always}
             .suite-title{text-align:center;font-size:20px;font-weight:bold;margin-bottom:15px;color:#000}
-            .schedule-table{width:100%;margin:12px 0;border-collapse:collapse;table-layout:fixed;color:#000}
+            .schedule-table{width:100%;max-width:277mm;margin:12px auto;border-collapse:collapse;table-layout:fixed;color:#000}
             .schedule-table>thead>tr>th,.schedule-table>tbody>tr>td{border:1px solid #000}
             .col-week{width:36px}
             .col-time{width:60px}
             .schedule-table thead th{background:#f2f2f2;font-weight:bold;font-size:14px;padding:4px;text-align:center}
             .week-label{background:#f2f2f2;font-weight:bold;text-align:center;font-size:14px}
             .time-cell{background:#f2f2f2;font-weight:bold;text-align:center;font-size:15px}
-            .day-cell{padding:0;vertical-align:top;height:1px;text-align:center}
-            /* 单元格内部小表：小组 | 教师 | 绪；宽度按内容自适应并居中，竖线借助 border-right + border-collapse 自动贯通整格并对齐 */
-            .cell-table{width:auto;max-width:100%;height:100%;border-collapse:collapse;margin:0 auto;font-size:12px}
-            .cell-table td{border:none;height:16px;line-height:16px;padding:0 5px;text-align:center;white-space:nowrap;color:#000}
+            .day-cell{padding:0;vertical-align:top;height:1px}
+            /* 单元格内部小表：小组 | 教师 | 绪；填满整格，竖线借助 border-right + border-collapse 自动贯通整格并对齐 */
+            .cell-table{width:100%;height:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}
+            .cell-table td{border:none;height:16px;line-height:16px;padding:0 4px;text-align:center;white-space:nowrap;color:#000}
             .cell-table .c-groups{border-right:1px solid #000}
-            .cell-table .c-teacher{border-right:1px solid #000}
-            .cell-table .c-intro{}
+            .cell-table .c-teacher{width:50px;border-right:1px solid #000}
+            .cell-table .c-intro{width:16px}
             .legend{margin-top:8px;font-size:12px;color:#000;line-height:1.6}
             .legend-note{margin:0 0 2px}
             .legend-exps{margin:0}
