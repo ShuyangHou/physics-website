@@ -7,6 +7,7 @@ import com.physics.service.UserService;
 import com.physics.utils.FileUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -15,12 +16,18 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /**
  * 文件管理控制器
@@ -259,7 +266,7 @@ public class FileController {
     }
     
     /**
-     * 下载额外资料压缩包
+     * 下载额外资料压缩包：将所有额外资料打包成真正的 ZIP 返回
      */
     @GetMapping("/extra/download-zip")
     public ResponseEntity<Resource> downloadExtraZip(@CookieValue("userId") Long userId) {
@@ -268,27 +275,62 @@ public class FileController {
             if (user == null) {
                 return ResponseEntity.notFound().build();
             }
-            
-            // 这里简化处理，返回第一个文件作为示例
-            // 实际项目中可以实现ZIP压缩功能
+
             List<ExtraFile> files = extraFileService.getFileList();
             if (files.isEmpty()) {
                 return ResponseEntity.notFound().build();
             }
-            
-            ExtraFile firstFile = files.get(0);
-            File file = fileUtil.getFile(firstFile.getFilePath());
-            if (!file.exists()) {
+
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            Set<String> usedNames = new HashSet<>();
+            int packed = 0;
+            try (ZipOutputStream zos = new ZipOutputStream(baos)) {
+                for (ExtraFile ef : files) {
+                    File file;
+                    try {
+                        file = fileUtil.getFile(ef.getFilePath());
+                    } catch (IllegalArgumentException ex) {
+                        // 跳过非法路径
+                        continue;
+                    }
+                    if (!file.exists() || !file.isFile()) {
+                        continue;
+                    }
+                    // 处理 ZIP 内重名
+                    String entryName = ef.getFileName() != null ? ef.getFileName() : file.getName();
+                    String uniqueName = entryName;
+                    int n = 1;
+                    while (usedNames.contains(uniqueName)) {
+                        int dot = entryName.lastIndexOf('.');
+                        if (dot > 0) {
+                            uniqueName = entryName.substring(0, dot) + "_" + n + entryName.substring(dot);
+                        } else {
+                            uniqueName = entryName + "_" + n;
+                        }
+                        n++;
+                    }
+                    usedNames.add(uniqueName);
+
+                    zos.putNextEntry(new ZipEntry(uniqueName));
+                    Files.copy(file.toPath(), zos);
+                    zos.closeEntry();
+                    packed++;
+                }
+            }
+
+            if (packed == 0) {
                 return ResponseEntity.notFound().build();
             }
-            
-            Resource resource = new FileSystemResource(file);
-            
+
+            Resource resource = new ByteArrayResource(baos.toByteArray());
+            String zipName = URLEncoder.encode("额外资料包.zip", StandardCharsets.UTF_8.toString());
+
             return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=额外资料包.zip")
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=\"" + zipName + "\"")
                     .contentType(MediaType.APPLICATION_OCTET_STREAM)
                     .body(resource);
-                    
+
         } catch (Exception e) {
             log.error("下载额外资料压缩包失败", e);
             return ResponseEntity.notFound().build();

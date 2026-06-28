@@ -98,7 +98,8 @@ public class ExtraFileServiceImpl extends ServiceImpl<ExtraFileMapper, ExtraFile
     public boolean deleteFile(Long fileId) {
         ExtraFile extraFile = this.getById(fileId);
         if (extraFile != null) {
-            fileUtil.deleteFile(extraFile.getFilePath());
+            // 逻辑删除：removeById 会将 deleted 置 1（@TableLogic），查询自动过滤。
+            // 物理文件保留以便审计与恢复，磁盘清理可由独立任务处理。
             return this.removeById(fileId);
         }
         return false;
