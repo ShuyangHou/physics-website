@@ -2102,91 +2102,71 @@ onMounted(async () => {
 .calendar-grid {
   display: grid;
   grid-template-columns: 120px repeat(5, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .calendar-grid.compact {
-  gap: 8px;
+  gap: 6px;
 }
 
 .calendar-header {
-  padding: 10px 8px;
-  text-align: center;
   font-weight: 600;
+  text-align: center;
+  padding: 8px 0;
+  font-size: 14px;
   color: var(--color-text-secondary);
-  background: var(--color-surface-soft);
-  border: 1px solid var(--color-border-light);
-  border-radius: 8px;
 }
 
 .calendar-slot-label {
-  background-color: var(--color-surface-soft);
-  border: 1px solid var(--color-border-light);
-  padding: 12px 8px;
-  text-align: center;
-  font-weight: 600;
-  border-radius: 8px;
-  color: var(--color-text);
   display: flex;
   align-items: center;
   justify-content: center;
+  font-weight: 600;
+  background: #fafafa;
+  border: 1px solid #eee;
+  font-size: 14px;
+  padding: 8px 0;
 }
 
 .calendar-cell {
-  border: 1px solid var(--color-border-light);
-  border-radius: 8px;
+  border: 1px solid #e6e8eb;
+  padding: 6px;
+  min-height: 100px;
   background: #fff;
-  min-height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  border-radius: 6px;
 }
 
 .calendar-cell.compact {
+  padding: 6px;
   min-height: 100px;
 }
 
 .class-box {
-  width: 100%;
+  min-width: 0;
   height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow: hidden;
 }
 
 .group-results {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2px;
-  justify-content: center;
-  align-items: center;
-  padding: 2px;
-  width: 100%;
-  max-height: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .group-results.compact {
-  gap: 1px;
-  padding: 1px;
-  width: 100%;
+  gap: 6px;
 }
 
 .group-chip {
+  border: 1px solid #dcdfe6;
+  border-radius: 16px;
+  padding: 6px 12px;
+  line-height: 24px;
+  text-align: center;
+  background: #f6f8fb;
+  color: #2f3640;
   cursor: pointer;
   transition: background-color 0.18s ease, border-color 0.18s ease;
-  white-space: nowrap;
-  font-size: 14px;
-  font-weight: 500;
-  padding: 6px 10px;
-  height: auto;
-  line-height: 1.3;
-  text-align: center;
-  width: 100%;
-  box-sizing: border-box;
-  border-radius: 8px;
-  background: var(--color-surface-soft);
-  border-color: var(--color-border-light);
-  color: var(--color-text-secondary);
 }
 
 .group-chip:hover {
@@ -2255,6 +2235,7 @@ onMounted(async () => {
 .grade-entry .calendar-header {
   font-size: 16px;
   font-weight: 600;
+  padding: 10px 0;
 }
 
 .grade-entry .calendar-slot-label {

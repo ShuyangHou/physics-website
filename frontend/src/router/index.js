@@ -48,7 +48,7 @@ const routes = [
         path: 'experiment/teacher-work',
         name: 'TeacherWork',
         component: () => import('@/views/experiment/teacher-work.vue'),
-        meta: { title: '教师工作', icon: 'Clock', roles: ['admin'] }
+        meta: { title: '教师工作', icon: 'Clock', roles: ['admin'], hidden: true }
       },
       {
         path: 'experiment/grade-entry',
