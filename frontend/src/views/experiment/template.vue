@@ -170,7 +170,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Document, Download, Delete, DocumentRemove, Upload } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { getExperimentList, addExperiment, updateExperiment, deleteExperiment } from '@/api/experiment'
-import { uploadFile } from '@/api/file'
+import { uploadFile, downloadFile } from '@/api/file'
 import { formatDateTime } from '@/utils/date'
 import ExtraFilesManager from '@/components/ExtraFilesManager.vue'
 
@@ -324,44 +324,40 @@ const downloadTemplate = async (row) => {
   }
   
   try {
-    // 构建下载URL（重要：不要拼接 /api 基础路径，/files 由后端静态资源直接映射）
-    const origin = window.location.origin
-    let path = row.filePath || ''
-    // 规范化为 /files 开头
-    if (path && !path.startsWith('/files')) {
-      if (path.startsWith('/')) path = path.substring(1)
-      path = `/files/${path}`
-    }
-    if (!path.startsWith('/')) path = `/${path}`
-    const url = `${origin}${path}`
-    
-    // 先检查文件是否存在
-    const response = await fetch(url, { method: 'HEAD' })
-    if (!response.ok) {
-      if (response.status === 404) {
-        ElMessage.error('文件不存在或已被删除')
-      } else if (response.status === 403) {
-        ElMessage.error('没有权限访问该文件')
-      } else {
-        ElMessage.error(`文件访问失败 (${response.status})`)
-      }
+    // 将存储的路径规范化为相对上传根目录的路径（去掉 /files 前缀），
+    // 通过已鉴权的后端接口 /api/file/download 下载，避免依赖公开静态直链。
+    let relativePath = (row.filePath || '').replace(/^\/?files\//, '').replace(/^\/+/, '')
+    if (!relativePath) {
+      ElMessage.warning('暂无模板文件')
       return
     }
-    
-    // 创建下载链接
+
+    const resp = await downloadFile(relativePath)
+    const blob = resp instanceof Blob ? resp : (resp?.data ?? resp)
+
+    // 从相对路径推导文件扩展名，拼出更友好的下载文件名
+    const dotIndex = relativePath.lastIndexOf('.')
+    const ext = dotIndex >= 0 ? relativePath.substring(dotIndex) : ''
+    const downloadName = `${row.experimentName || '模板'}_模板${ext}`
+
+    const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = row.experimentName + '_模板'
-    link.target = '_blank'
+    link.download = downloadName
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
-    
+    window.URL.revokeObjectURL(url)
+
     ElMessage.success('开始下载模板文件')
-    
+
   } catch (error) {
     console.error('下载失败:', error)
-    ElMessage.error('下载失败，请检查网络连接或联系管理员')
+    if (error?.response?.status === 404) {
+      ElMessage.error('文件不存在或已被删除')
+    } else {
+      ElMessage.error('下载失败，请检查网络连接或联系管理员')
+    }
   }
 }
 const removeTemplate = async (row) => {
