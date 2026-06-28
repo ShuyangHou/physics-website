@@ -8,6 +8,7 @@
             <el-button 
               v-if="userInfo.userType === 'admin'"
               type="danger" 
+              plain
               @click="handleLockAllGrades" 
               :loading="lockingAll"
               :disabled="!currentSemester || !selectedSuiteId"
@@ -19,6 +20,7 @@
             <el-button 
               v-if="userInfo.userType === 'admin'"
               type="success" 
+              plain
               @click="handleUnlockAllGrades" 
               :loading="unlockingAll"
               :disabled="!currentSemester || !selectedSuiteId"
@@ -214,7 +216,7 @@
         <div class="table-actions">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <div class="action-buttons">
-              <el-button type="success" @click="handleDownloadTemplate" :disabled="!selectedGroupName || !selectedExperimentId" size="default">
+              <el-button type="success" plain @click="handleDownloadTemplate" :disabled="!selectedGroupName || !selectedExperimentId" size="default">
                 下载模板
               </el-button>
               <el-upload
@@ -223,23 +225,23 @@
                 accept=".xlsx"
                 :on-change="handleTemplateFileChange"
               >
-                <el-button type="primary" :disabled="!selectedGroupName || !selectedExperimentId" size="default">
+                <el-button type="primary" plain :disabled="!selectedGroupName || !selectedExperimentId" size="default">
                   导入模板
                 </el-button>
               </el-upload>
-              <el-button type="warning" @click="setAllToN" :disabled="!selectedGroupName || !selectedExperimentId" size="default">
+              <el-button type="warning" plain @click="setAllToN" :disabled="!selectedGroupName || !selectedExperimentId" size="default">
                 <el-icon><RemoveFilled /></el-icon>
                 全部设为N (不计分)
               </el-button>
-              <el-button type="info" @click="clearAllScores" :disabled="!selectedGroupName || !selectedExperimentId" size="default">
+              <el-button type="info" plain @click="clearAllScores" :disabled="!selectedGroupName || !selectedExperimentId" size="default">
                 <el-icon><Clock /></el-icon>
                 清空所有成绩
               </el-button>
-              <el-button v-if="userInfo.userType === 'admin'" type="danger" @click="handleBatchLock" :disabled="!selectedGroupName || !selectedExperimentId" :loading="batchLocking" size="default">
+              <el-button v-if="userInfo.userType === 'admin'" type="danger" plain @click="handleBatchLock" :disabled="!selectedGroupName || !selectedExperimentId" :loading="batchLocking" size="default">
                 <el-icon><Lock /></el-icon>
                 全部冻结
               </el-button>
-              <el-button v-if="userInfo.userType === 'admin'" type="success" @click="handleBatchUnlock" :disabled="!selectedGroupName || !selectedExperimentId" :loading="batchUnlocking" size="default">
+              <el-button v-if="userInfo.userType === 'admin'" type="success" plain @click="handleBatchUnlock" :disabled="!selectedGroupName || !selectedExperimentId" :loading="batchUnlocking" size="default">
                 <el-icon><Unlock /></el-icon>
                 全部解冻
               </el-button>
@@ -336,6 +338,7 @@
               <el-button 
                 v-if="!scope.row.isLocked && hasGrade(scope.row)" 
                 type="warning" 
+                plain
                 size="small" 
                 @click="handleLockGrade(scope.row)"
                 :loading="scope.row.locking"
@@ -345,6 +348,7 @@
               <el-button 
                 v-else-if="scope.row.isLocked" 
                 type="success" 
+                plain
                 size="small" 
                 @click="handleUnlockGrade(scope.row)"
                 :loading="scope.row.unlocking"
@@ -2521,8 +2525,8 @@ onMounted(async () => {
 .changed-input :deep(.el-select__wrapper),
 .changed-input :deep(.el-input__inner),
 .changed-input :deep(.el-select__selection) {
-  background-color: #fff8dc;
-  box-shadow: 0 0 0 2px #d99518 inset;
+  background-color: #fffdf5;
+  box-shadow: 0 0 0 1px #e6c068 inset;
 }
 
 .grade-table :deep(.el-table__header th) {
