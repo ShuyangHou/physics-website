@@ -21,7 +21,9 @@ public class WebConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(authInterceptor())
                 .addPathPatterns("/**")
-                .excludePathPatterns("/api/auth/login", "/files/**");
+                // 注意：/files/** 不再排除鉴权，上传文件需登录后方可访问，
+                // 避免上传内容被匿名用户猜名下载。
+                .excludePathPatterns("/api/auth/login");
     }
 
     /**

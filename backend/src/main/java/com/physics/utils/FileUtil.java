@@ -44,13 +44,40 @@ public class FileUtil {
         if (fileName == null || !fileName.contains(".")) {
             return "文件名格式错误";
         }
-        
+
+        // 拒绝包含路径分隔符或空字节的文件名，避免落盘时越界或被截断
+        if (fileName.contains("/") || fileName.contains("\\") || fileName.contains("\u0000")) {
+            return "文件名包含非法字符";
+        }
+
         String extension = fileName.substring(fileName.lastIndexOf(".") + 1).toLowerCase();
-        if (!ALLOWED_TYPES.contains(extension)) {
+        if (extension.isEmpty() || !ALLOWED_TYPES.contains(extension)) {
             return "不支持的文件类型";
         }
-        
+
+        // 二次校验：浏览器声明的 MIME 类型需与允许集合相符（防止伪装扩展名）
+        String contentType = file.getContentType();
+        if (contentType != null && !isAllowedContentType(contentType)) {
+            return "文件内容类型与扩展名不符";
+        }
+
         return null;
+    }
+
+    private static final Set<String> ALLOWED_CONTENT_TYPES = new HashSet<>(Arrays.asList(
+            "application/pdf",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-powerpoint",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            // 部分浏览器/客户端对 office 文件会上报通用二进制类型
+            "application/octet-stream"
+    ));
+
+    private boolean isAllowedContentType(String contentType) {
+        return ALLOWED_CONTENT_TYPES.contains(contentType.toLowerCase());
     }
     
     /**
@@ -172,7 +199,7 @@ public class FileUtil {
      */
     public boolean deleteFile(String filePath) {
         try {
-            Path path = Paths.get(uploadRoot, filePath);
+            Path path = resolveWithinRoot(filePath);
             return Files.deleteIfExists(path);
         } catch (IOException e) {
             return false;
@@ -183,7 +210,26 @@ public class FileUtil {
      * 获取文件
      */
     public File getFile(String filePath) {
-        Path path = Paths.get(uploadRoot, filePath);
-        return path.toFile();
+        return resolveWithinRoot(filePath).toFile();
+    }
+
+    /**
+     * 将相对路径安全地解析到上传根目录内，防止路径穿越（如 ../ 越界访问任意文件）。
+     * 解析后的真实路径必须仍位于上传根目录之下，否则抛出异常。
+     */
+    public Path resolveWithinRoot(String filePath) {
+        if (filePath == null) {
+            throw new IllegalArgumentException("文件路径不能为空");
+        }
+        // 拒绝绝对路径与空字节，避免绕过
+        if (filePath.contains("\u0000")) {
+            throw new IllegalArgumentException("非法文件路径");
+        }
+        Path root = Paths.get(uploadRoot).toAbsolutePath().normalize();
+        Path resolved = root.resolve(filePath).normalize();
+        if (!resolved.startsWith(root)) {
+            throw new IllegalArgumentException("非法文件路径：越界访问被拒绝");
+        }
+        return resolved;
     }
 }
