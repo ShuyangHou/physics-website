@@ -68,14 +68,11 @@
          <el-button @click="handleClear">清空</el-button>
       </div>
 
-      <!-- 导入进度 -->
+      <!-- 导入处理中提示（真实的处理中状态，而非虚假进度） -->
       <div v-if="importing" class="progress-section">
-        <el-progress 
-          :percentage="importProgress" 
-          :format="progressFormat"
-          status="success"
-        />
+        <el-icon class="processing-spinner" :size="28"><Loading /></el-icon>
         <p class="progress-text">{{ progressText }}</p>
+        <p class="progress-hint">数据量较大时可能需要一些时间，请耐心等待，不要关闭或刷新页面。</p>
       </div>
     </el-card>
 
@@ -143,7 +140,7 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { UploadFilled, Refresh, Warning } from '@element-plus/icons-vue'
+import { UploadFilled, Refresh, Warning, Loading } from '@element-plus/icons-vue'
 import { importStudents } from '@/api/user'
 
 const router = useRouter()
@@ -152,7 +149,6 @@ const importing = ref(false)
 const selectedFile = ref(null)
 const resultVisible = ref(false)
 const importResult = ref({})
-const importProgress = ref(0)
 const progressText = ref('')
 
 // 导入成功后的处理逻辑
@@ -187,33 +183,16 @@ const handleImport = async () => {
   }
 
   importing.value = true
-  importProgress.value = 0
-  progressText.value = '正在解析Excel文件...'
+  progressText.value = '正在上传并导入数据...'
 
   try {
     // 创建FormData
     const formData = new FormData()
     formData.append('file', selectedFile.value)
 
-    // 模拟进度
-    const progressTimer = setInterval(() => {
-      if (importProgress.value < 90) {
-        importProgress.value += 10
-        if (importProgress.value < 30) {
-          progressText.value = '正在解析Excel文件...'
-        } else if (importProgress.value < 60) {
-          progressText.value = '正在验证数据...'
-        } else if (importProgress.value < 90) {
-          progressText.value = '正在导入数据...'
-        }
-      }
-    }, 200)
-
-    // 调用导入接口
+    // 调用导入接口（真实处理中状态由 importing 控制，不再使用虚假进度）
     const response = await importStudents(formData)
-    
-    clearInterval(progressTimer)
-    importProgress.value = 100
+
     progressText.value = '导入完成'
 
     if (response.code === 200) {
@@ -251,24 +230,17 @@ const handleImport = async () => {
     ElMessage.error('导入失败：' + error.message)
   } finally {
     importing.value = false
-    // 延迟重置进度
+    // 延迟清空提示文案
     setTimeout(() => {
-      importProgress.value = 0
       progressText.value = ''
     }, 1000)
   }
-}
-
-// 进度条格式化
-const progressFormat = (percentage) => {
-  return `${percentage}%`
 }
 
 // 清空数据
 const handleClear = () => {
   selectedFile.value = null
   uploadRef.value.clearFiles()
-  importProgress.value = 0
   progressText.value = ''
 }
 
@@ -329,10 +301,26 @@ const handleResultDialogClose = () => {
   text-align: center;
 }
 
+.processing-spinner {
+  color: #409eff;
+  animation: rotating 1.2s linear infinite;
+}
+
+@keyframes rotating {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .progress-text {
   margin-top: 10px;
   color: #606266;
   font-size: 14px;
+}
+
+.progress-hint {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 12px;
 }
 
 .result-content {

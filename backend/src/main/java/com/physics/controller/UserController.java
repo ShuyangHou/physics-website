@@ -187,16 +187,12 @@ public class UserController {
                 String unique = userService.generateUniqueStudentRealName(baseName);
                 user.setRealName(unique);
                 // 生成不重复用户名（基础为传入用户名或学号），防止与现有账户冲突
+                // 优化：交由 service 一次性查出现有用户名集合并在内存中去重，
+                // 避免原先 while 循环中逐次 count() 反复查库导致新增变慢。
                 String baseUsername = (user.getUsername() != null && !user.getUsername().trim().isEmpty())
                         ? user.getUsername().trim()
                         : (user.getSchoolId() != null && !user.getSchoolId().trim().isEmpty() ? user.getSchoolId().trim() : "user");
-                String candidate = baseUsername;
-                int suffix = 1;
-                while (userService.count(new QueryWrapper<User>().eq("username", candidate)) > 0) {
-                    suffix++;
-                    candidate = baseUsername + "(" + suffix + ")";
-                }
-                user.setUsername(candidate);
+                user.setUsername(userService.generateUniqueUsername(baseUsername));
                 if (user.getPassword() == null || user.getPassword().isEmpty()) {
                     user.setPassword("0000");
                 }

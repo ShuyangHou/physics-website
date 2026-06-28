@@ -147,8 +147,8 @@
       
       <template #footer>
         <span class="dialog-footer">
-          <el-button @click="studentDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="handleSaveStudent">保存</el-button>
+          <el-button :disabled="saving" @click="studentDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="saving" @click="handleSaveStudent">{{ saving ? '保存中...' : '保存' }}</el-button>
         </span>
       </template>
     </el-dialog>
@@ -163,6 +163,7 @@ import { getStudentList, addUser, updateUser, deleteUser, resetPassword, checkDu
 const userInfo = reactive(JSON.parse(localStorage.getItem('userInfo') || '{}'))
 
 const loading = ref(false)
+const saving = ref(false)
 const studentDialogVisible = ref(false)
 const isEdit = ref(false)
 const studentFormRef = ref()
@@ -361,10 +362,16 @@ const handleDeleteStudent = async (row) => {
 // 保存学生
 const handleSaveStudent = async () => {
   if (!studentFormRef.value) return
-  
+
   try {
     await studentFormRef.value.validate()
-    
+  } catch (error) {
+    // 表单校验未通过，直接返回（不进入保存中状态）
+    return
+  }
+
+  saving.value = true
+  try {
     const data = {
       schoolId: studentForm.schoolId,
       realName: studentForm.realName,
@@ -504,6 +511,8 @@ const handleSaveStudent = async () => {
     }
   } catch (error) {
     console.error('保存失败:', error)
+  } finally {
+    saving.value = false
   }
 }
 
