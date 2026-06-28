@@ -132,6 +132,16 @@
                   <div class="group-results">
                     <div v-for="(g, idx) in cellState[d][slot].groupNames" :key="g + idx" class="group-chip">{{ g }}</div>
       </div>
+                  <div class="cell-summary" v-if="isAdmin && !readonly">
+                    <span class="summary-meta">
+                      <strong>{{ (cellState[d][slot].classList || []).length }}</strong> 班
+                      · <strong>{{ (cellState[d][slot].groupNames || []).length }}</strong> 组
+                    </span>
+                    <span class="summary-teachers" v-if="(cellState[d][slot].teacherTags || []).length">
+                      教师：{{ (cellState[d][slot].teacherTags || []).map(t => t.name).join('、') }}
+                    </span>
+                    <span class="summary-teachers muted" v-else>教师未分配</span>
+                  </div>
                   <div class="cell-actions" v-if="isAdmin && !readonly">
                     <div class="cell-actions-left">
                       <el-button size="small" @click="handleCellRegroup(d, slot)">重新分组</el-button>
@@ -300,7 +310,7 @@
     </el-dialog>
 
     <!-- 批量设置对话框 -->
-    <el-dialog v-model="batchDialogVisible" title="批量设置（按小组逐周配置）" width="900px">
+    <el-dialog v-model="batchDialogVisible" title="批量设置（按小组逐周配置）" width="960px">
       <el-form label-width="90px">
         <el-tabs v-model="batchActiveTab" class="batch-tabs">
         <el-tab-pane label="周次配置" name="weeks">
@@ -331,9 +341,13 @@
         </el-form-item>
 
         <el-alert type="info" show-icon :closable="false" style="margin-bottom: 12px" title="为所选小组设置第几周做哪个实验、由谁授课。未选择的行不提交。"/>
-        
 
-        <el-table :key="batchDialogInstanceKey" :data="groupPlan" :row-key="row => row.week" border size="small" style="width: 100%">
+        <div class="weeks-table-toolbar">
+          <el-switch v-model="showEnabledOnly" active-text="仅看已启用周次" />
+          <span class="weeks-table-hint">已启用 {{ enabledWeekCount }} 周{{ showEnabledOnly ? '（关闭可显示全部周次以勾选）' : '' }}</span>
+        </div>
+
+        <el-table :key="batchDialogInstanceKey" :data="displayedGroupPlan" :row-key="row => row.week" border size="small" style="width: 100%">
           <el-table-column prop="week" label="周次" width="80">
             <template #default="scope">第{{ scope.row.week }}周</template>
           </el-table-column>
@@ -513,31 +527,32 @@
         </el-tabs>
       </el-form>
       <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="batchDialogVisible = false">关闭</el-button>
-          <el-button type="primary" @click="saveGroupPlan">保存周次设置</el-button>
-          <el-button 
-            type="warning" 
-            @click="openTeacherSettingDialog"
-          >
-            <el-icon><User /></el-icon>
-            教师设置
-          </el-button>
-          <el-button 
-            type="success" 
-            @click="generateScheduleFromBatchDialog" 
-            :loading="generatingSchedule"
-            :disabled="!hasExistingGroups"
-          >
-            <el-icon><Star /></el-icon>
-            生成课表
-          </el-button>
-        </span>
+        <div class="dialog-footer split">
+          <div class="footer-left">
+            <el-button link type="primary" @click="openTeacherSettingDialog">
+              <el-icon><User /></el-icon>
+              教师设置
+            </el-button>
+          </div>
+          <div class="footer-right">
+            <el-button @click="batchDialogVisible = false">关闭</el-button>
+            <el-button type="primary" @click="saveGroupPlan">保存周次设置</el-button>
+            <el-button 
+              type="success" 
+              @click="generateScheduleFromBatchDialog" 
+              :loading="generatingSchedule"
+              :disabled="!hasExistingGroups"
+            >
+              <el-icon><Star /></el-icon>
+              生成课表
+            </el-button>
+          </div>
+        </div>
       </template>
     </el-dialog>
     
     <!-- 教师设置对话框 -->
-    <el-dialog v-model="teacherSettingDialogVisible" title="教师设置（按时间段分配教师）" width="800px">
+    <el-dialog v-model="teacherSettingDialogVisible" title="教师设置（按时间段分配教师）" width="760px">
       <el-form label-width="120px">
         <el-form-item label="时间段">
           <span class="time-slot-display">{{ weekType === 0 ? '单' : '双' }}{{ batchContext.weekday }}{{ batchContext.slot }}</span>
@@ -586,7 +601,7 @@
     <el-dialog
       v-model="teacherAssignDialogVisible"
       title="教师分配总览"
-      width="1000px"
+      width="960px"
       top="5vh"
       :close-on-click-modal="false"
     >
@@ -1636,16 +1651,6 @@ const loadTeachersFromGroupExperiments = async () => {
               }
             })
             
-            // 如果教师数量不足5个，从教师列表中补充
-            if (teachers.length < 5 && teacherList.value && teacherList.value.length > 0) {
-              teacherList.value.forEach(teacher => {
-                if (teachers.length < 5 && !teacherIds.includes(teacher.userId)) {
-                  teachers.push({ id: teacher.userId, name: teacher.realName })
-                  teacherIds.push(teacher.userId)
-                }
-              })
-            }
-            
             // 更新课表显示
             if (cellState[weekday] && cellState[weekday][slot]) {
               cellState[weekday][slot].teacherIds = teacherIds
@@ -2275,6 +2280,16 @@ watch(() => batchForm.filterSuiteId, async () => {
 
 const groupPlan = ref([])
 
+// 周次表精简：默认只显示已启用的周次，关闭后显示全部周次以便勾选
+const showEnabledOnly = ref(true)
+const enabledWeekCount = computed(() => groupPlan.value.filter(r => r.enabled).length)
+const displayedGroupPlan = computed(() => {
+  if (!showEnabledOnly.value) return groupPlan.value
+  const enabled = groupPlan.value.filter(r => r.enabled)
+  // 没有任何启用行时回退显示全部，避免空表让人无从勾选
+  return enabled.length ? enabled : groupPlan.value
+})
+
 // 启用行切换：未启用则清空该行选择；启用时自动补默认老师/实验
 const onTogglePlanRow = (row) => {
   if (!row.enabled) {
@@ -2371,6 +2386,7 @@ const openBatchDialog = async (weekday, slot) => {
   try {
     batchDialogInstanceKey.value++
     batchActiveTab.value = 'weeks'
+    showEnabledOnly.value = true
     batchContext.weekday = weekday
     batchContext.slot = slot
     const cell = cellState[weekday][slot]
@@ -4822,11 +4838,33 @@ const generateWeekScheduleHTML = (suiteId, weekType) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.card-header > span {
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .header-actions {
   display: flex;
-  gap: 10px;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 auto;
+}
+
+/* 单/双周单选不被挤成竖排 */
+.header-actions :deep(.el-radio-group) {
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+.header-actions :deep(.el-radio-button) {
+  white-space: nowrap;
 }
 
 .calendar-grid {
@@ -4855,10 +4893,56 @@ const generateWeekScheduleHTML = (suiteId, weekType) => {
 .calendar-cell {
   border: 1px solid #e6e8eb;
   padding: 16px;
-  min-height: calc((100vh - 220px) / 2);
+  min-height: 132px;
   background: #fff;
   border-radius: 8px;
   overflow: hidden;
+}
+
+/* 已分组格子摘要：一眼看到班/组/教师 */
+.cell-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: #475467;
+}
+.cell-summary .summary-meta strong {
+  color: #1d2939;
+  font-weight: 700;
+}
+.cell-summary .summary-teachers {
+  color: #2f6f4f;
+}
+.cell-summary .summary-teachers.muted {
+  color: #98a2b3;
+  font-style: italic;
+}
+
+/* 周次表工具栏 */
+.weeks-table-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.weeks-table-hint {
+  color: #667085;
+  font-size: 13px;
+}
+
+/* 弹窗底部：次要操作靠左、主操作靠右 */
+.dialog-footer.split {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.dialog-footer.split .footer-right {
+  display: flex;
+  gap: 10px;
 }
 
 .cell-inputs {
@@ -5023,7 +5107,7 @@ const generateWeekScheduleHTML = (suiteId, weekType) => {
 .box-title { font-weight: 700; margin-bottom: 6px; color: #303133; white-space: nowrap; }
 .teacher-label { font-size: 14px; letter-spacing: 1px; }
 
-.calendar-cell { border: 1px solid #e6e8eb; padding: 16px; min-height: calc((100vh - 220px) / 2); background: #fff; border-radius: 8px; }
+.calendar-cell { border: 1px solid #e6e8eb; padding: 16px; min-height: 132px; background: #fff; border-radius: 8px; }
 .group-results { 
   display: grid; 
   grid-template-columns: repeat(2, minmax(0, 1fr)); 
