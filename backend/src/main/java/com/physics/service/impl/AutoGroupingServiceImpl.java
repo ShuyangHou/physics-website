@@ -37,6 +37,11 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(rollbackFor = Exception.class)
 public class AutoGroupingServiceImpl implements AutoGroupingService {
+
+    /** 通用分组每组目标人数 */
+    private static final int STUDENTS_PER_GROUP = 12;
+    /** 单个班级最多分组数（受组名字母 A..Z 限制） */
+    private static final int MAX_GROUPS_PER_CLASS = 26;
     
     @Autowired
     private GroupingUtils groupingUtils;
@@ -442,28 +447,9 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
                 return assign10GroupsEvenlyFor4Classes(classList, groupList, semesterId, suiteId, weekType);
             }
 
-            // 其他班级数：保持旧逻辑（12/12 + C/D 平均）
-            int totalStudentsInTimeSlot = 0;
-            for (String className : classList) {
-                List<User> classStudents = userService.getStudentsByClassName(className);
-                totalStudentsInTimeSlot += (classStudents == null ? 0 : classStudents.size());
-            }
-            log.info("该时间段总学生数: {}", totalStudentsInTimeSlot);
-
-            for (String className : classList) {
-                boolean ok = assignABGroupsToClass(className, groupList, totalStudentsInTimeSlot, semesterId, suiteId, weekType);
-                if (!ok) {
-                    log.error("班级 {} 的A组B组分配失败", className);
-                    return false;
-                }
-            }
-
-            boolean ok = assignCDGroupsToRemainingStudents(classList, groupList, semesterId, suiteId, weekType);
-            if (!ok) {
-                log.error("C组D组分配失败");
-                return false;
-            }
-            
+            // 其他班级数（单班或 ≥5 班）：每班独立按 ~12 人均分为若干组，组内不跨班，
+            // 避免大班只有 A/B/C/D 四组导致的人数严重不均衡。
+            assignEvenlyPerClass(classList, semesterId, suiteId, weekType);
             log.info("学生分组更新完成，weekType: {}", weekType);
             return true;
             
@@ -474,166 +460,42 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
     }
     
     /**
-     * 为指定班级的学生分配A组和B组
-     * 
-     * @param className 班级名称
-     * @param groupList 分组列表
-     * @param totalStudentsInTimeSlot 该时间段的总学生数（此参数不再使用，保留用于兼容）
-     * @param semesterId 学期ID
-     * @param suiteId 实验套ID
-     * @param weekType 周类型：0-单周，1-双周
-     * @return 是否分配成功
+     * 通用分组（班级数不是 2/3/4 时，如单班或 ≥5 班）：
+     * 每个班级独立按每组约 {@link #STUDENTS_PER_GROUP} 人均分为 ceil(人数/每组人数) 个组，
+     * 组名为 班级+字母（A、B、C…），组内不跨班，组间人数尽量均衡。
+     * 全程基于内存中已按学号排序的学生列表分配，不依赖 group_name 是否为空，
+     * 因此不会被上一次分组残留的 group_name 影响（修复旧逻辑用“group_name 为空”
+     * 判定未分配学生、再次分组时会漏分的问题）。
      */
-    private boolean assignABGroupsToClass(String className, List<String> groupList, int totalStudentsInTimeSlot, 
-                                          Long semesterId, Long suiteId, Integer weekType) {
-        try {
-            // 获取该班级的所有学生
-            List<User> students = userService.getStudentsByClassName(className);
-            
-            if (students.isEmpty()) {
+    private void assignEvenlyPerClass(List<String> classList, Long semesterId, Long suiteId, Integer weekType) {
+        List<User> toUpdate = new ArrayList<>();
+        for (String className : classList) {
+            if (className == null || className.trim().isEmpty()) continue;
+            List<User> students = userService.getStudentsByClassName(className.trim());
+            if (students == null || students.isEmpty()) {
                 log.warn("班级 {} 没有学生", className);
-                return true;
+                continue;
             }
-            
-            // 找到属于该班级的A组和B组
-            List<String> classABGroups = groupList.stream()
-                    .filter(group -> group.equals(className + "A") || group.equals(className + "B"))
-                    .collect(Collectors.toList());
-            
-            if (classABGroups.isEmpty()) {
-                log.warn("班级 {} 没有对应的A组B组", className);
-                return true;
-            }
-            
-            int classStudentCount = students.size();
-            log.info("班级 {} 共有 {} 个学生", className, classStudentCount);
-            
-            int studentIndex = 0;
-            List<User> toUpdate = new ArrayList<>();
-            
-            // 分配A组：前12个学生（第1-12个）
-            if (classABGroups.contains(className + "A")) {
-                int aGroupCount = Math.min(12, classStudentCount); // 最多12人
-                log.info("班级 {} 的A组分配 {} 个学生", className, aGroupCount);
-                
-                for (int i = 0; i < aGroupCount && studentIndex < students.size(); i++) {
-                    User student = students.get(studentIndex);
-                    applyGroupAssignment(student, className + "A", semesterId, suiteId, weekType);
-                    toUpdate.add(student);
-                    studentIndex++;
+            sortStudentsBySchoolId(students);
+            int size = students.size();
+            int n = (int) Math.ceil(size / (double) STUDENTS_PER_GROUP);
+            if (n < 1) n = 1;
+            if (n > MAX_GROUPS_PER_CLASS) n = MAX_GROUPS_PER_CLASS;
+            int base = size / n;
+            int remainder = size % n;
+            int idx = 0;
+            for (int g = 0; g < n; g++) {
+                int count = base + (g < remainder ? 1 : 0);
+                String groupName = className + (char) ('A' + g);
+                for (int i = 0; i < count && idx < size; i++) {
+                    User stu = students.get(idx++);
+                    applyGroupAssignment(stu, groupName, semesterId, suiteId, weekType);
+                    toUpdate.add(stu);
                 }
+                log.info("班级 {} 组 {} 分配 {} 人", className, groupName, count);
             }
-            
-            // 分配B组：第13-24个学生
-            if (classABGroups.contains(className + "B") && studentIndex < classStudentCount) {
-                int bGroupStart = 12; // 从第13个开始（索引12）
-                int bGroupCount = Math.min(12, classStudentCount - bGroupStart); // 最多12人
-                log.info("班级 {} 的B组分配 {} 个学生", className, bGroupCount);
-                
-                for (int i = 0; i < bGroupCount && studentIndex < students.size(); i++) {
-                    User student = students.get(studentIndex);
-                    applyGroupAssignment(student, className + "B", semesterId, suiteId, weekType);
-                    toUpdate.add(student);
-                    studentIndex++;
-                }
-            }
-            
-            if (!toUpdate.isEmpty()) {
-                flushGroupingUpdates(toUpdate);
-            }
-            
-            // 超过24人的学生不在这里分配，留给C组D组分配
-            if (studentIndex < classStudentCount) {
-                log.info("班级 {} 还有 {} 个学生（超过24人）将分配给C组D组", className, classStudentCount - studentIndex);
-            }
-            
-            return true;
-            
-        } catch (Exception e) {
-            log.error("为班级 {} 分配A组B组失败", className, e);
-            return false;
         }
-    }
-    
-    /**
-     * 为剩余学生分配C组和D组
-     * 
-     * @param classList 班级列表
-     * @param groupList 分组列表
-     * @param semesterId 学期ID
-     * @param suiteId 实验套ID
-     * @param weekType 周类型：0-单周，1-双周
-     * @return 是否分配成功
-     */
-    private boolean assignCDGroupsToRemainingStudents(List<String> classList, List<String> groupList, 
-                                                      Long semesterId, Long suiteId, Integer weekType) {
-        try {
-            // 找到C组和D组
-            List<String> cdGroups = groupList.stream()
-                    .filter(group -> group.endsWith("C") || group.endsWith("D"))
-                    .collect(Collectors.toList());
-            
-            if (cdGroups.isEmpty()) {
-                log.info("没有C组D组需要分配");
-                return true;
-            }
-            
-            // 收集所有班级中未分配分组的学生（即groupName为null或空的学生）
-            List<User> remainingStudents = new ArrayList<>();
-            for (String className : classList) {
-                List<User> classStudents = userService.getStudentsByClassName(className);
-                for (User student : classStudents) {
-                    if (student.getGroupName() == null || student.getGroupName().trim().isEmpty()) {
-                        remainingStudents.add(student);
-                    }
-                }
-            }
-            
-            if (remainingStudents.isEmpty()) {
-                log.info("没有剩余学生需要分配到C组D组");
-                return true;
-            }
-            
-            log.info("剩余学生数量: {}, C组D组: {}", remainingStudents.size(), cdGroups);
-            
-            // 分配剩余学生到C组和D组 - 平均分配
-            int totalRemainingStudents = remainingStudents.size();
-            int cdGroupsCount = cdGroups.size();
-            
-            if (cdGroupsCount > 0) {
-                int studentsPerGroup = totalRemainingStudents / cdGroupsCount;
-                int extraStudents = totalRemainingStudents % cdGroupsCount;
-                
-                int studentIndex = 0;
-                List<User> toUpdate = new ArrayList<>();
-                for (int groupIndex = 0; groupIndex < cdGroups.size(); groupIndex++) {
-                    String groupName = cdGroups.get(groupIndex);
-                    
-                    // 计算当前组应该分配的学生数量
-                    int currentGroupStudents = studentsPerGroup;
-                    if (groupIndex < extraStudents) {
-                        currentGroupStudents++; // 前几个组多分配一个学生
-                    }
-                    
-                    // 为当前组分配学生
-                    for (int i = 0; i < currentGroupStudents && studentIndex < remainingStudents.size(); i++) {
-                        User student = remainingStudents.get(studentIndex);
-                        applyGroupAssignment(student, groupName, semesterId, suiteId, weekType);
-                        toUpdate.add(student);
-                        studentIndex++;
-                    }
-                }
-                if (!toUpdate.isEmpty()) {
-                    flushGroupingUpdates(toUpdate);
-                }
-            }
-            
-            return true;
-            
-        } catch (Exception e) {
-            log.error("分配C组D组失败", e);
-            return false;
-        }
+        flushGroupingUpdates(toUpdate);
     }
     
     /**
