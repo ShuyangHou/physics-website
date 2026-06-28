@@ -3254,30 +3254,33 @@ const findCellSchedule = (suiteId, weekType, timeSlot, weekday) => {
   })
 }
 
+// 解析形如 "[1,2,3]" 或 "1,2,3" 的字符串为去空白后的非空字符串数组
+const parseBracketedCsv = (raw) => {
+  if (!raw) return []
+  return String(raw).replaceAll(/[\[\]]/g, '').split(',').map(v => v.trim()).filter(Boolean)
+}
+
 const getGroupIdsForCell = (suiteId, weekType, timeSlot, weekday) => {
   try {
     const schedule = findCellSchedule(suiteId, weekType, timeSlot, weekday)
     
     if (schedule && schedule.groupIds) {
       // 解析groupIds字符串
-      const groupIdsStr = schedule.groupIds.replaceAll(/[\[\]]/g, '')
-      if (groupIdsStr) {
-        const groupIds = groupIdsStr.split(',').map(id => id.trim()).filter(id => id)
-        if (groupIds.length > 0) {
-          // 每行显示两个小组，确保格式正确
-          let result = ''
-          for (let i = 0; i < groupIds.length; i += 2) {
-            if (i > 0) result += '\n'
-            if (i + 1 < groupIds.length) {
-              // 两个小组在同一行
-              result += `${groupIds[i]}  ${groupIds[i + 1]}`
-            } else {
-              // 最后一个小组单独一行
-              result += groupIds[i]
-            }
+      const groupIds = parseBracketedCsv(schedule.groupIds)
+      if (groupIds.length > 0) {
+        // 每行显示两个小组，确保格式正确
+        let result = ''
+        for (let i = 0; i < groupIds.length; i += 2) {
+          if (i > 0) result += '\n'
+          if (i + 1 < groupIds.length) {
+            // 两个小组在同一行
+            result += `${groupIds[i]}  ${groupIds[i + 1]}`
+          } else {
+            // 最后一个小组单独一行
+            result += groupIds[i]
           }
-          return result
         }
+        return result
       }
     }
     return ''
@@ -3293,42 +3296,39 @@ const getTeacherNamesForCell = (suiteId, weekType, timeSlot, weekday) => {
     
     // 优先方案：从schedule.teacherIds获取（每个时间段固定的5个教师）
     if (schedule && schedule.teacherIds) {
-      const teacherIdsStr = schedule.teacherIds.replaceAll(/[\[\]]/g, '')
-      if (teacherIdsStr) {
-        const teacherIds = teacherIdsStr.split(',').map(id => id.trim()).filter(id => id)
-        if (teacherIds.length > 0) {
-          const teacherNames = teacherIds
-            .map(id => teacherIdToName(id) || id)
-            .filter(name => name)
-          
-          // 查找绪论课标记
-          const introCourseFlags = []
-          const weekTypeWeeks = getWeekTypeWeeksForIntro(weekType)
-          
-          allGroupExperimentsData.value.forEach(ge => {
-            if (String(ge.suiteId) === String(suiteId) && ge.teacherId && ge.isIntroCourse === 1) {
-              const weekMatch = ge.experimentTime?.match(/第(\d+)周/)
-              if (weekMatch) {
-                const week = parseInt(weekMatch[1])
-                if (weekTypeWeeks.includes(week)) {
-                  const idx = teacherIds.findIndex(id => String(id) === String(ge.teacherId))
-                  if (idx >= 0 && !introCourseFlags[idx]) {
-                    introCourseFlags[idx] = '绪'
-                  }
+      const teacherIds = parseBracketedCsv(schedule.teacherIds)
+      if (teacherIds.length > 0) {
+        const teacherNames = teacherIds
+          .map(id => teacherIdToName(id) || id)
+          .filter(name => name)
+
+        // 查找绪论课标记
+        const introCourseFlags = []
+        const weekTypeWeeks = getWeekTypeWeeksForIntro(weekType)
+
+        allGroupExperimentsData.value.forEach(ge => {
+          if (String(ge.suiteId) === String(suiteId) && ge.teacherId && ge.isIntroCourse === 1) {
+            const weekMatch = ge.experimentTime?.match(/第(\d+)周/)
+            if (weekMatch) {
+              const week = parseInt(weekMatch[1])
+              if (weekTypeWeeks.includes(week)) {
+                const idx = teacherIds.findIndex(id => String(id) === String(ge.teacherId))
+                if (idx >= 0 && !introCourseFlags[idx]) {
+                  introCourseFlags[idx] = '绪'
                 }
               }
             }
-          })
-          
-          // 补齐缺失的标记
-          while (introCourseFlags.length < teacherNames.length) {
-            introCourseFlags.push('')
           }
-          
-          return {
-            teacherNames,
-            introCourseFlags
-          }
+        })
+
+        // 补齐缺失的标记
+        while (introCourseFlags.length < teacherNames.length) {
+          introCourseFlags.push('')
+        }
+
+        return {
+          teacherNames,
+          introCourseFlags
         }
       }
     }
@@ -3336,8 +3336,7 @@ const getTeacherNamesForCell = (suiteId, weekType, timeSlot, weekday) => {
     // 回退方案：从小组数据收集教师（如果teacherIds不存在）
     if (schedule && schedule.groupIds) {
       // 解析小组列表
-      const groupIdsStr = schedule.groupIds.replaceAll(/[\[\]]/g, '')
-      const groupList = groupIdsStr ? groupIdsStr.split(',').map(g => g.trim()).filter(g => g) : []
+      const groupList = parseBracketedCsv(schedule.groupIds)
       
       if (groupList.length > 0) {
         // 从group_experiment数据中获取这些小组的教师信息
@@ -4108,10 +4107,62 @@ const generateTeacherScheduleHTML = () => {
   return html
 }
 
+// 生成教师周次课表中某个时段（上午/下午）的一行
+const buildTeacherScheduleRow = (suiteId, weekType, slot, slotLabel) => {
+  let html = '<div class="table-row">'
+  html += `<div class="time-cell">${slotLabel}</div>`
+  for (const weekday of weekdays) {
+    const groupIds = getGroupIdsForCell(suiteId, weekType, slot, weekday)
+    const teacherData = getTeacherNamesForCell(suiteId, weekType, slot, weekday)
+    const teacherNames = Array.isArray(teacherData?.teacherNames) ? teacherData.teacherNames : []
+    const introFlags = Array.isArray(teacherData?.introCourseFlags) ? teacherData.introCourseFlags : []
+
+    // 解析小组列表
+    const flatGroups = groupIds
+      ? groupIds.split('\n').filter(line => line.trim()).map(line => line.trim().split(/\s+/).filter(g => g)).flat()
+      : []
+
+    html += '<div class="schedule-cell">'
+    html += '<div class="cell-content">'
+    html += '<div class="left-section">'
+    html += '<div class="group-ids">'
+    // 每行显示两个小组
+    for (let i = 0; i < flatGroups.length; i += 2) {
+      html += '<div class="group-row">'
+      html += `<div class="group-item">${flatGroups[i] || ''}</div>`
+      if (i + 1 < flatGroups.length) {
+        html += `<div class="group-item">${flatGroups[i + 1] || ''}</div>`
+      }
+      html += '</div>'
+    }
+    html += '</div>'
+    html += '</div>'
+    html += '<div class="divider"></div>'
+    html += '<div class="right-section">'
+    html += '<div class="teacher-names-column">'
+    // 每行显示一个老师，一个老师对应两个小组
+    for (let i = 0; i < teacherNames.length; i++) {
+      html += `<div class="teacher-name-cell">${teacherNames[i] || ''}</div>`
+    }
+    html += '</div>'
+    html += '<div class="divider-vertical"></div>'
+    html += '<div class="intro-course-column">'
+    for (let i = 0; i < introFlags.length; i++) {
+      html += `<div class="intro-course-cell">${introFlags[i] || ''}</div>`
+    }
+    html += '</div>'
+    html += '</div>'
+    html += '</div>'
+    html += '</div>'
+  }
+  html += '</div>'
+  return html
+}
+
 // 生成教师周次课表HTML
 const generateTeacherWeekScheduleHTML = (suiteId, weekType) => {
   let html = '<div class="schedule-table">'
-  
+
   // 表头
   html += '<div class="table-header">'
   html += '<div class="header-cell">时间</div>'
@@ -4121,109 +4172,15 @@ const generateTeacherWeekScheduleHTML = (suiteId, weekType) => {
   html += '<div class="header-cell">星期四</div>'
   html += '<div class="header-cell">星期五</div>'
   html += '</div>'
-  
+
   // 表体
   html += '<div class="table-body">'
-  
-  // 上午
-  html += '<div class="table-row">'
-  html += '<div class="time-cell">上午</div>'
-  for (const weekday of weekdays) {
-    const groupIds = getGroupIdsForCell(suiteId, weekType, 'morning', weekday)
-    const teacherData = getTeacherNamesForCell(suiteId, weekType, 'morning', weekday)
-    const teacherNames = Array.isArray(teacherData?.teacherNames) ? teacherData.teacherNames : []
-    const introFlags = Array.isArray(teacherData?.introCourseFlags) ? teacherData.introCourseFlags : []
-    
-    // 解析小组列表
-    const groupList = groupIds ? groupIds.split('\n').filter(line => line.trim()).map(line => line.trim().split(/\s+/).filter(g => g)) : []
-    const flatGroups = groupList.flat()
-    
-    html += '<div class="schedule-cell">'
-    html += '<div class="cell-content">'
-    html += '<div class="left-section">'
-    html += '<div class="group-ids">'
-    // 每行显示两个小组
-    for (let i = 0; i < flatGroups.length; i += 2) {
-      html += '<div class="group-row">'
-      html += `<div class="group-item">${flatGroups[i] || ''}</div>`
-      if (i + 1 < flatGroups.length) {
-        html += `<div class="group-item">${flatGroups[i + 1] || ''}</div>`
-      }
-      html += '</div>'
-    }
-    html += '</div>'
-    html += '</div>'
-    html += '<div class="divider"></div>'
-    html += '<div class="right-section">'
-    html += '<div class="teacher-names-column">'
-    // 每行显示一个老师，一个老师对应两个小组
-    for (let i = 0; i < teacherNames.length; i++) {
-      html += `<div class="teacher-name-cell">${teacherNames[i] || ''}</div>`
-    }
-    html += '</div>'
-    html += '<div class="divider-vertical"></div>'
-    html += '<div class="intro-course-column">'
-    for (let i = 0; i < introFlags.length; i++) {
-      html += `<div class="intro-course-cell">${introFlags[i] || ''}</div>`
-    }
-    html += '</div>'
-    html += '</div>'
-    html += '</div>'
-    html += '</div>'
-  }
+  html += buildTeacherScheduleRow(suiteId, weekType, 'morning', '上午')
+  html += buildTeacherScheduleRow(suiteId, weekType, 'afternoon', '下午')
   html += '</div>'
-  
-  // 下午
-  html += '<div class="table-row">'
-  html += '<div class="time-cell">下午</div>'
-  for (const weekday of weekdays) {
-    const groupIds = getGroupIdsForCell(suiteId, weekType, 'afternoon', weekday)
-    const teacherData = getTeacherNamesForCell(suiteId, weekType, 'afternoon', weekday)
-    const teacherNames = Array.isArray(teacherData?.teacherNames) ? teacherData.teacherNames : []
-    const introFlags = Array.isArray(teacherData?.introCourseFlags) ? teacherData.introCourseFlags : []
-    
-    // 解析小组列表
-    const groupList = groupIds ? groupIds.split('\n').filter(line => line.trim()).map(line => line.trim().split(/\s+/).filter(g => g)) : []
-    const flatGroups = groupList.flat()
-    
-    html += '<div class="schedule-cell">'
-    html += '<div class="cell-content">'
-    html += '<div class="left-section">'
-    html += '<div class="group-ids">'
-    // 每行显示两个小组
-    for (let i = 0; i < flatGroups.length; i += 2) {
-      html += '<div class="group-row">'
-      html += `<div class="group-item">${flatGroups[i] || ''}</div>`
-      if (i + 1 < flatGroups.length) {
-        html += `<div class="group-item">${flatGroups[i + 1] || ''}</div>`
-      }
-      html += '</div>'
-    }
-    html += '</div>'
-    html += '</div>'
-    html += '<div class="divider"></div>'
-    html += '<div class="right-section">'
-    html += '<div class="teacher-names-column">'
-    // 每行显示一个老师，一个老师对应两个小组
-    for (let i = 0; i < teacherNames.length; i++) {
-      html += `<div class="teacher-name-cell">${teacherNames[i] || ''}</div>`
-    }
-    html += '</div>'
-    html += '<div class="divider-vertical"></div>'
-    html += '<div class="intro-course-column">'
-    for (let i = 0; i < introFlags.length; i++) {
-      html += `<div class="intro-course-cell">${introFlags[i] || ''}</div>`
-    }
-    html += '</div>'
-    html += '</div>'
-    html += '</div>'
-    html += '</div>'
-  }
+
   html += '</div>'
-  
-  html += '</div>'
-  html += '</div>'
-  
+
   return html
 }
 
