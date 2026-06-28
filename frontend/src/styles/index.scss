@@ -39,6 +39,10 @@
   --el-fill-color-light: #f5f7fa;
   --el-border-radius-base: var(--radius-control);
   --el-component-size: 40px;
+
+  /* 表格在密集数据下的可读性：悬停高亮与表头底色 */
+  --el-table-row-hover-bg-color: #eef4ff;
+  --el-table-header-bg-color: var(--color-surface-soft);
 }
 
 /* 全局样式重置 */

@@ -232,7 +232,7 @@ onUnmounted(() => {
 
 .action-item .el-icon {
   margin-bottom: 10px;
-  color: #409EFF;
+  color: var(--color-primary);
 }
 
 .action-item span {
