@@ -27,7 +27,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -37,11 +36,6 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(rollbackFor = Exception.class)
 public class AutoGroupingServiceImpl implements AutoGroupingService {
-
-    /** 通用分组每组目标人数 */
-    private static final int STUDENTS_PER_GROUP = 12;
-    /** 单个班级最多分组数（受组名字母 A..Z 限制） */
-    private static final int MAX_GROUPS_PER_CLASS = 26;
     
     @Autowired
     private GroupingUtils groupingUtils;
@@ -80,27 +74,6 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
         }
     }
 
-    private void sortStudentsBySchoolId(List<User> students) {
-        if (students == null || students.size() <= 1) return;
-        students.sort((a, b) -> {
-            if (a == null && b == null) return 0;
-            if (a == null) return 1;
-            if (b == null) return -1;
-            String sa = a.getSchoolId() == null ? "" : a.getSchoolId().trim();
-            String sb = b.getSchoolId() == null ? "" : b.getSchoolId().trim();
-            if (sa.isEmpty() && sb.isEmpty()) return 0;
-            if (sa.isEmpty()) return 1;
-            if (sb.isEmpty()) return -1;
-            try {
-                long la = Long.parseLong(sa);
-                long lb = Long.parseLong(sb);
-                return Long.compare(la, lb);
-            } catch (Exception ignore) {
-                return sa.compareTo(sb);
-            }
-        });
-    }
-
     /**
      * 设置某学生的分组信息（学期/套件/周类型），不落库；由调用方收集后批量更新。
      */
@@ -133,169 +106,6 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
         }
     }
 
-    private boolean assignABByClassEvenly(List<String> classList, Long semesterId, Long suiteId, Integer weekType) {
-        try {
-            List<User> toUpdate = new ArrayList<>();
-            for (String className : classList) {
-                if (className == null || className.trim().isEmpty()) continue;
-                List<User> students = userService.getStudentsByClassName(className.trim());
-                if (students == null || students.isEmpty()) {
-                    log.warn("班级 {} 没有学生", className);
-                    continue;
-                }
-                sortStudentsBySchoolId(students);
-                int n = students.size();
-                int aCount = (n + 1) / 2;
-                for (int i = 0; i < n; i++) {
-                    User stu = students.get(i);
-                    String gn = (i < aCount) ? (className + "A") : (className + "B");
-                    applyGroupAssignment(stu, gn, semesterId, suiteId, weekType);
-                    toUpdate.add(stu);
-                }
-                log.info("班级 {} 平分为A/B完成: A={}, B={}", className, aCount, n - aCount);
-            }
-            if (!toUpdate.isEmpty()) {
-                flushGroupingUpdates(toUpdate);
-            }
-            return true;
-        } catch (Exception e) {
-            log.error("按班级平分A/B失败", e);
-            return false;
-        }
-    }
-
-    private boolean assign10GroupsEvenlyFor4Classes(List<String> classList, List<String> groupList,
-                                                    Long semesterId, Long suiteId, Integer weekType) {
-        try {
-            // 期望组名：每班A/B + 第一个班级C/D
-            String firstClass = classList.get(0);
-            Map<String, Integer> desiredSize = new LinkedHashMap<>();
-            List<String> orderedGroups = new ArrayList<>();
-
-            for (String cls : classList) {
-                if (cls == null || cls.trim().isEmpty()) continue;
-                orderedGroups.add(cls + "A");
-                orderedGroups.add(cls + "B");
-            }
-            orderedGroups.add(firstClass + "C");
-            orderedGroups.add(firstClass + "D");
-
-            // 统计总人数
-            Map<String, List<User>> classToStudents = new HashMap<>();
-            int total = 0;
-            for (String cls : classList) {
-                List<User> stus = userService.getStudentsByClassName(cls);
-                if (stus == null) stus = new ArrayList<>();
-                sortStudentsBySchoolId(stus);
-                classToStudents.put(cls, stus);
-                total += stus.size();
-            }
-            if (total == 0) {
-                log.warn("四个班总人数为0，跳过分组");
-                return true;
-            }
-
-            int base = total / 10;
-            int r = total % 10;
-
-            // B方案：余数优先给C/D，再给AB（按orderedGroups顺序）
-            for (String g : orderedGroups) {
-                desiredSize.put(g, base);
-            }
-            if (r > 0) {
-                desiredSize.put(firstClass + "C", desiredSize.get(firstClass + "C") + 1);
-                r--;
-            }
-            if (r > 0) {
-                desiredSize.put(firstClass + "D", desiredSize.get(firstClass + "D") + 1);
-                r--;
-            }
-            for (String g : orderedGroups) {
-                if (r <= 0) break;
-                if (g.endsWith("C") || g.endsWith("D")) continue;
-                desiredSize.put(g, desiredSize.get(g) + 1);
-                r--;
-            }
-
-            // 分配AB（只取本班），剩余进入pool
-            Map<String, List<User>> groupToStudents = new LinkedHashMap<>();
-            List<User> remainingPool = new ArrayList<>();
-
-            for (String cls : classList) {
-                List<User> stus = classToStudents.getOrDefault(cls, new ArrayList<>());
-                int idx = 0;
-                String gA = cls + "A";
-                String gB = cls + "B";
-                int capA = desiredSize.getOrDefault(gA, 0);
-                int capB = desiredSize.getOrDefault(gB, 0);
-
-                List<User> aList = new ArrayList<>();
-                for (int i = 0; i < capA && idx < stus.size(); i++) {
-                    aList.add(stus.get(idx++));
-                }
-                List<User> bList = new ArrayList<>();
-                for (int i = 0; i < capB && idx < stus.size(); i++) {
-                    bList.add(stus.get(idx++));
-                }
-                groupToStudents.put(gA, aList);
-                groupToStudents.put(gB, bList);
-
-                while (idx < stus.size()) {
-                    remainingPool.add(stus.get(idx++));
-                }
-            }
-
-            // remainingPool 需要尽量保持“学号按着”：按 schoolId 再排一次（不同班合并后）
-            sortStudentsBySchoolId(remainingPool);
-
-            String gC = firstClass + "C";
-            String gD = firstClass + "D";
-            int capC = desiredSize.getOrDefault(gC, 0);
-            int capD = desiredSize.getOrDefault(gD, 0);
-
-            List<User> cList = new ArrayList<>();
-            List<User> dList = new ArrayList<>();
-
-            // 若池子人数与cap不一致（极端情况下AB受限导致池子更多），则退化为对池子进行平分
-            if (remainingPool.size() == (capC + capD)) {
-                int idx = 0;
-                for (int i = 0; i < capC && idx < remainingPool.size(); i++) cList.add(remainingPool.get(idx++));
-                for (int i = 0; i < capD && idx < remainingPool.size(); i++) dList.add(remainingPool.get(idx++));
-            } else {
-                int poolN = remainingPool.size();
-                int cCnt = (poolN + 1) / 2;
-                for (int i = 0; i < poolN; i++) {
-                    if (i < cCnt) cList.add(remainingPool.get(i));
-                    else dList.add(remainingPool.get(i));
-                }
-            }
-
-            groupToStudents.put(gC, cList);
-            groupToStudents.put(gD, dList);
-
-            // 写回DB（批量）
-            List<User> toUpdate = new ArrayList<>();
-            for (Map.Entry<String, List<User>> e : groupToStudents.entrySet()) {
-                String groupName = e.getKey();
-                List<User> stus = e.getValue();
-                if (stus == null) continue;
-                for (User stu : stus) {
-                    applyGroupAssignment(stu, groupName, semesterId, suiteId, weekType);
-                    toUpdate.add(stu);
-                }
-                log.info("4班平分：组 {} 分配人数 {}", groupName, stus.size());
-            }
-            if (!toUpdate.isEmpty()) {
-                flushGroupingUpdates(toUpdate);
-            }
-
-            return true;
-        } catch (Exception e) {
-            log.error("4班10组平分失败", e);
-            return false;
-        }
-    }
-    
     @Override
     public Result<Boolean> updateScheduleByTime(String experimentTime, String classIds, String groupIds, Long semesterId, Long suiteId, Integer weekType) {
         try {
@@ -426,30 +236,26 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
             // 解析班级列表
             List<String> classList = groupingUtils.parseClassIds(classIds);
 
-            // 解析分组列表
-            String[] groups = groupIds.split(",");
-            List<String> groupList = Arrays.stream(groups)
-                    .filter(Objects::nonNull)
-                    .map(String::trim)
-                    .filter(s -> !s.isEmpty())
-                    .collect(Collectors.toList());
-
             if (classList == null || classList.isEmpty()) {
                 log.warn("班级列表为空，跳过分组更新");
                 return true;
             }
 
-            if (classList.size() == 2 || classList.size() == 3) {
-                return assignABByClassEvenly(classList, semesterId, suiteId, weekType);
+            // 单一真值源：组名生成（generateGroups）与学生分配都来自同一个
+            // GroupingUtils.buildGroupingPlan，保证组名与实际分配完全一致。
+            LinkedHashMap<String, List<User>> plan = groupingUtils.buildGroupingPlan(classList);
+            List<User> toUpdate = new ArrayList<>();
+            for (Map.Entry<String, List<User>> entry : plan.entrySet()) {
+                String groupName = entry.getKey();
+                List<User> members = entry.getValue();
+                if (members == null || members.isEmpty()) continue;
+                for (User stu : members) {
+                    applyGroupAssignment(stu, groupName, semesterId, suiteId, weekType);
+                    toUpdate.add(stu);
+                }
+                log.info("组 {} 分配 {} 人", groupName, members.size());
             }
-
-            if (classList.size() == 4) {
-                return assign10GroupsEvenlyFor4Classes(classList, groupList, semesterId, suiteId, weekType);
-            }
-
-            // 其他班级数（单班或 ≥5 班）：每班独立按 ~12 人均分为若干组，组内不跨班，
-            // 避免大班只有 A/B/C/D 四组导致的人数严重不均衡。
-            assignEvenlyPerClass(classList, semesterId, suiteId, weekType);
+            flushGroupingUpdates(toUpdate);
             log.info("学生分组更新完成，weekType: {}", weekType);
             return true;
             
@@ -457,45 +263,6 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
             log.error("更新学生分组失败", e);
             return false;
         }
-    }
-    
-    /**
-     * 通用分组（班级数不是 2/3/4 时，如单班或 ≥5 班）：
-     * 每个班级独立按每组约 {@link #STUDENTS_PER_GROUP} 人均分为 ceil(人数/每组人数) 个组，
-     * 组名为 班级+字母（A、B、C…），组内不跨班，组间人数尽量均衡。
-     * 全程基于内存中已按学号排序的学生列表分配，不依赖 group_name 是否为空，
-     * 因此不会被上一次分组残留的 group_name 影响（修复旧逻辑用“group_name 为空”
-     * 判定未分配学生、再次分组时会漏分的问题）。
-     */
-    private void assignEvenlyPerClass(List<String> classList, Long semesterId, Long suiteId, Integer weekType) {
-        List<User> toUpdate = new ArrayList<>();
-        for (String className : classList) {
-            if (className == null || className.trim().isEmpty()) continue;
-            List<User> students = userService.getStudentsByClassName(className.trim());
-            if (students == null || students.isEmpty()) {
-                log.warn("班级 {} 没有学生", className);
-                continue;
-            }
-            sortStudentsBySchoolId(students);
-            int size = students.size();
-            int n = (int) Math.ceil(size / (double) STUDENTS_PER_GROUP);
-            if (n < 1) n = 1;
-            if (n > MAX_GROUPS_PER_CLASS) n = MAX_GROUPS_PER_CLASS;
-            int base = size / n;
-            int remainder = size % n;
-            int idx = 0;
-            for (int g = 0; g < n; g++) {
-                int count = base + (g < remainder ? 1 : 0);
-                String groupName = className + (char) ('A' + g);
-                for (int i = 0; i < count && idx < size; i++) {
-                    User stu = students.get(idx++);
-                    applyGroupAssignment(stu, groupName, semesterId, suiteId, weekType);
-                    toUpdate.add(stu);
-                }
-                log.info("班级 {} 组 {} 分配 {} 人", className, groupName, count);
-            }
-        }
-        flushGroupingUpdates(toUpdate);
     }
     
     /**
