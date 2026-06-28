@@ -4020,13 +4020,16 @@ const printTeacherSchedule = async () => {
             .schedule-table thead th{background:#f2f2f2;font-weight:bold;font-size:14px;padding:4px;text-align:center}
             .week-label{background:#f2f2f2;font-weight:bold;text-align:center;font-size:14px}
             .time-cell{background:#f2f2f2;font-weight:bold;text-align:center;font-size:15px}
-            .day-cell{padding:0;vertical-align:top;height:1px}
-            /* 单元格内部小表：小组 | 教师 | 绪；竖线借助 border-right + border-collapse 自动贯通整格并对齐 */
-            .cell-table{width:100%;height:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}
-            .cell-table td{border:none;height:16px;line-height:16px;padding:0 3px;text-align:center;white-space:nowrap;color:#000}
+            .day-cell{padding:0;vertical-align:top;height:1px;text-align:center}
+            /* 单元格内部小表：小组 | 教师 | 绪；宽度按内容自适应并居中，竖线借助 border-right + border-collapse 自动贯通整格并对齐 */
+            .cell-table{width:auto;max-width:100%;height:100%;border-collapse:collapse;margin:0 auto;font-size:12px}
+            .cell-table td{border:none;height:16px;line-height:16px;padding:0 5px;text-align:center;white-space:nowrap;color:#000}
             .cell-table .c-groups{border-right:1px solid #000}
-            .cell-table .c-teacher{width:52px;border-right:1px solid #000}
-            .cell-table .c-intro{width:18px}
+            .cell-table .c-teacher{border-right:1px solid #000}
+            .cell-table .c-intro{}
+            .legend{margin-top:8px;font-size:12px;color:#000;line-height:1.6}
+            .legend-note{margin:0 0 2px}
+            .legend-exps{margin:0}
             @media print{
               @page{size:A4 landscape;margin:10mm}
               html,body{width:100% !important;transform:scale(1) !important}
@@ -4086,6 +4089,7 @@ const generateTeacherScheduleHTML = () => {
     html += `<div class="suite-schedule">`
     html += `<h2 class="suite-title">${semesterName}${suite.suiteName}教师课表</h2>`
     html += generateTeacherFullTableHTML(suiteId)
+    html += buildTeacherLegendHTML(suiteId)
     html += `</div>`
   }
   
@@ -4119,6 +4123,30 @@ const buildTeacherDayCellHTML = (suiteId, weekType, slot, weekday) => {
     html += '</tr>'
   }
   html += '</tbody></table>'
+  return html
+}
+
+// 生成底部说明：标记说明 + 实验项目清单（按实验ID排序、编号）
+const buildTeacherLegendHTML = (suiteId) => {
+  const seen = new Set()
+  const exps = []
+  for (const ge of (allGroupExperimentsData.value || [])) {
+    const sid = ge.suiteId ?? ge.experimentSuiteId
+    if (String(sid) !== String(suiteId)) continue
+    const eid = ge.experimentId
+    if (eid == null || seen.has(String(eid))) continue
+    seen.add(String(eid))
+    exps.push({ experimentId: Number(eid), experimentName: ge.experimentName || '' })
+  }
+  exps.sort((a, b) => a.experimentId - b.experimentId)
+
+  let html = '<div class="legend">'
+  html += '<p class="legend-note">说明："*"号为值班教师，"绪"为绪论课教师</p>'
+  if (exps.length > 0) {
+    const items = exps.map((e, i) => `${i + 1}-${e.experimentName}`).join('\u3000')
+    html += `<p class="legend-exps">${items}</p>`
+  }
+  html += '</div>'
   return html
 }
 
