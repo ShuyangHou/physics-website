@@ -133,41 +133,21 @@
     >
       <div class="grade-details" v-loading="dialogLoading" :element-loading-text="dialogLoadingText">
         <div class="experiment-info">
-          <h4>小组与实验选择</h4>
-          
-          <!-- 录入进度统计 -->
-          <div v-if="studentGrades.length > 0" class="grade-progress">
-            <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
-              <div class="progress-item">
-                <span class="progress-label">总人数:</span>
-                <span class="progress-value total">{{ studentGrades.length }}</span>
-              </div>
-              <div class="progress-item">
-                <span class="progress-label">已录入:</span>
-                <span class="progress-value completed">{{ gradeStats.completed }}</span>
-              </div>
-              <div class="progress-item">
-                <span class="progress-label">待录入:</span>
-                <span class="progress-value pending">{{ gradeStats.pending }}</span>
-              </div>
-              <div class="progress-item">
-                <span class="progress-label">不计分:</span>
-                <span class="progress-value grade-n">{{ gradeStats.notCounted }}</span>
-              </div>
-              <div class="progress-item">
-                <span class="progress-label">完成度:</span>
-                <span class="progress-value percentage">{{ gradeStats.percentage }}%</span>
-              </div>
-            </div>
-          </div>
-          
-          <div class="grade-tips">
-            <strong>成绩录入说明：</strong>
-            <ul style="margin: 5px 0 0 20px; padding: 0;">
-              <li>选择"N (不计分)"表示该实验不计入学生总成绩</li>
-              <li>学生端不会看到标记为"N"的实验成绩</li>
-              <li>总成绩计算时会自动排除"N"标记的实验</li>
-            </ul>
+          <div class="experiment-info-head">
+            <h4>小组与实验选择</h4>
+            <el-tooltip placement="bottom-start" effect="dark">
+              <template #content>
+                <div style="line-height: 1.8;">
+                  选择“N (不计分)”表示该实验不计入学生总成绩<br />
+                  学生端不会看到标记为“N”的实验成绩<br />
+                  总成绩计算时会自动排除“N”标记的实验
+                </div>
+              </template>
+              <span class="grade-tips-inline"><el-icon><InfoFilled /></el-icon> 录入说明</span>
+            </el-tooltip>
+            <span class="grade-tips-inline keyboard-hint">
+              <el-icon><Sort /></el-icon> 回车跳下一个 · Shift+回车上一个 · ↑/↓ 移动
+            </span>
           </div>
           <el-row :gutter="20" class="selection-row">
             <el-col :span="8">
@@ -227,29 +207,30 @@
                   导入模板
                 </el-button>
               </el-upload>
-              <el-button plain @click="setAllToN" :disabled="!selectedGroupName || !selectedExperimentId" size="default">
-                <el-icon><RemoveFilled /></el-icon>
-                全部设为N (不计分)
-              </el-button>
-              <el-button plain @click="clearAllScores" :disabled="!selectedGroupName || !selectedExperimentId" size="default">
-                <el-icon><Clock /></el-icon>
-                清空所有成绩
-              </el-button>
-              <el-button v-if="userInfo.userType === 'admin'" plain @click="handleBatchLock" :disabled="!selectedGroupName || !selectedExperimentId" :loading="batchLocking" size="default">
-                <el-icon><Lock /></el-icon>
-                全部冻结
-              </el-button>
-              <el-button v-if="userInfo.userType === 'admin'" plain @click="handleBatchUnlock" :disabled="!selectedGroupName || !selectedExperimentId" :loading="batchUnlocking" size="default">
-                <el-icon><Unlock /></el-icon>
-                全部解冻
-              </el-button>
+              <el-dropdown trigger="click" @command="handleBatchCommand" :disabled="!selectedGroupName || !selectedExperimentId">
+                <el-button plain :disabled="!selectedGroupName || !selectedExperimentId" size="default">
+                  批量操作<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="setN"><el-icon><RemoveFilled /></el-icon>全部设为N (不计分)</el-dropdown-item>
+                    <el-dropdown-item command="clear"><el-icon><Clock /></el-icon>清空所有成绩</el-dropdown-item>
+                    <el-dropdown-item v-if="userInfo.userType === 'admin'" command="lock" divided><el-icon><Lock /></el-icon>全部冻结</el-dropdown-item>
+                    <el-dropdown-item v-if="userInfo.userType === 'admin'" command="unlock"><el-icon><Unlock /></el-icon>全部解冻</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </div>
-            <div class="table-info" style="color: #606266; font-size: 14px; display: flex; align-items: center; gap: 10px;">
-              <span>共 {{ displayedStudentGrades.length }} 名学生</span>
+            <div class="table-info" style="color: #606266; font-size: 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <span>共 {{ displayedStudentGrades.length }} 名</span>
               <el-divider direction="vertical" />
-              <span>已录入 {{ gradeStats.completed }} 人</span>
+              <span>已录入 <strong style="color:#303133;">{{ gradeStats.completed }}</strong></span>
               <el-divider direction="vertical" />
-              <span>待录入 {{ gradeStats.pending }} 人</span>
+              <span>待录入 <strong style="color:#303133;">{{ gradeStats.pending }}</strong></span>
+              <el-divider direction="vertical" />
+              <span>不计分 {{ gradeStats.notCounted }}</span>
+              <el-divider direction="vertical" />
+              <span>完成度 <strong style="color:#303133;">{{ gradeStats.percentage }}%</strong></span>
               <el-divider direction="vertical" />
               <el-button link type="primary" @click="showLocalFilters = !showLocalFilters">{{ showLocalFilters ? '收起筛选' : '展开筛选' }}</el-button>
             </div>
@@ -266,7 +247,7 @@
            :data="displayedStudentGrades" 
            style="width: 100%" 
            :row-class-name="getRowClassName"
-           height="60vh"
+           height="66vh"
            border
            class="grade-table"
          >
@@ -287,14 +268,15 @@
                </span>
              </template>
            </el-table-column>
-           <el-table-column prop="score" label="成绩" width="180">
+           <el-table-column prop="score" label="成绩" width="200">
              <template #default="scope">
                 <el-input
                   v-model="scope.row.score"
                   placeholder="输入(0-100或N)"
-                  size="small"
+                  size="large"
                   clearable
-                  style="width: 110px;"
+                  class="score-input"
+                  style="width: 150px;"
                   :class="getScoreInputClass(scope.row)"
                   :disabled="scope.row.isLocked || scope.row.isReadOnly"
                   :ref="(el) => setScoreRef(scope.$index, el)"
@@ -369,7 +351,7 @@
 <script setup>
 import { ref, reactive, onMounted, nextTick, computed } from 'vue'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
-import { CircleCheckFilled, RemoveFilled, Clock, Refresh, Lock, Unlock } from '@element-plus/icons-vue'
+import { CircleCheckFilled, RemoveFilled, Clock, Refresh, Lock, Unlock, ArrowDown, InfoFilled, Sort } from '@element-plus/icons-vue'
 
 import { getStudentsByGroup, batchUpsertGrades, lockGrade, unlockGrade, getGradeDetail, batchLockGrades, downloadGradeTemplateXlsx, importGradeTemplateXlsx } from '@/api/grade'
 import { getSemesterList, getWeekInfo } from '@/api/semester'
@@ -533,11 +515,13 @@ const focusScoreAt = (index) => {
 
 const onScoreKeydown = (e, index) => {
   const key = e?.key
-  if (key !== 'ArrowDown' && key !== 'ArrowUp') return
+  const isEnter = key === 'Enter'
+  if (key !== 'ArrowDown' && key !== 'ArrowUp' && !isEnter) return
   e.preventDefault()
   e.stopPropagation()
 
-  const step = key === 'ArrowDown' ? 1 : -1
+  // 回车=下一个待录入学生；Shift+回车=上一个。方向键照旧上下移动。
+  const step = (key === 'ArrowUp' || (isEnter && e.shiftKey)) ? -1 : 1
   const list = displayedStudentGrades.value || []
   let i = Number(index)
   if (Number.isNaN(i)) return
@@ -1367,7 +1351,16 @@ const handleRefresh = async () => {
   ElMessage.success('数据已刷新')
 }
 
-// 批量设置所有学生成绩为N
+// 「批量操作」下拉菜单分发
+const handleBatchCommand = (command) => {
+  switch (command) {
+    case 'setN': return setAllToN()
+    case 'clear': return clearAllScores()
+    case 'lock': return handleBatchLock()
+    case 'unlock': return handleBatchUnlock()
+  }
+}
+
 const setAllToN = () => {
   if (!selectedGroupName.value || !selectedExperimentId.value) {
     ElMessage.warning('请先选择小组和实验')
@@ -2189,16 +2182,38 @@ onMounted(async () => {
 }
 
 .experiment-info {
-  margin-bottom: 20px;
-  padding: 18px;
+  margin-bottom: 14px;
+  padding: 14px 16px;
   background-color: var(--color-surface-soft);
   border: 1px solid var(--color-border-light);
   border-radius: 10px;
 }
 
+.experiment-info-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
 .experiment-info h4 {
-  margin: 0 0 10px 0;
+  margin: 0;
   color: #2c3e50;
+}
+
+.grade-tips-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  cursor: help;
+}
+
+.grade-tips-inline.keyboard-hint {
+  cursor: default;
+  margin-left: auto;
 }
 
 .dialog-footer {
@@ -2208,11 +2223,18 @@ onMounted(async () => {
 }
 
 .table-actions {
-  margin: 16px 0;
-  padding: 14px 16px;
+  margin: 12px 0;
+  padding: 12px 16px;
   background: var(--color-surface-soft);
   border-radius: 10px;
   border: 1px solid var(--color-border-light);
+}
+
+/* 成绩输入框放大：更易点击与录入 */
+.score-input :deep(.el-input__inner) {
+  font-size: 17px;
+  font-weight: 600;
+  text-align: center;
 }
 
 .table-actions .el-button {
@@ -2443,7 +2465,7 @@ onMounted(async () => {
 
 /* 选择区域样式 */
 .selection-row {
-  margin-bottom: 20px;
+  margin-bottom: 0;
 }
 
 .selection-item {
