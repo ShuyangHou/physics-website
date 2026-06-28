@@ -138,8 +138,8 @@
 
 <script setup>
 import { ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
+import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import { UploadFilled, Refresh, Warning, Loading } from '@element-plus/icons-vue'
 import { importStudents } from '@/api/user'
 
@@ -150,6 +150,31 @@ const selectedFile = ref(null)
 const resultVisible = ref(false)
 const importResult = ref({})
 const progressText = ref('')
+
+// 导入进行中的全局"处理中"通知句柄，便于切页后仍可关闭
+let importingNotification = null
+
+// A. 导入进行中离开本页时二次确认，避免误触导致看不到导入结果
+onBeforeRouteLeave(async (to, from, next) => {
+  if (!importing.value) {
+    next()
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      '学生数据正在导入中，导入会在后台继续，但离开本页将看不到详细的导入结果。确定离开吗？',
+      '正在导入',
+      {
+        confirmButtonText: '仍然离开',
+        cancelButtonText: '留在本页',
+        type: 'warning'
+      }
+    )
+    next()
+  } catch {
+    next(false)
+  }
+})
 
 // 导入成功后的处理逻辑
 
@@ -185,6 +210,14 @@ const handleImport = async () => {
   importing.value = true
   progressText.value = '正在上传并导入数据...'
 
+  // B. 全局"处理中"通知：即使切换到其他页面也能看到导入状态
+  importingNotification = ElNotification({
+    title: '正在导入学生',
+    message: '数据导入中，可继续浏览其他页面，完成后会在此通知您结果。',
+    type: 'info',
+    duration: 0
+  })
+
   try {
     // 创建FormData
     const formData = new FormData()
@@ -201,6 +234,13 @@ const handleImport = async () => {
       
       if (importResult.value.success) {
         ElMessage.success('导入成功！')
+        // B. 全局成功通知，切页后也能看到
+        ElNotification({
+          title: '导入完成',
+          message: `成功导入 ${importResult.value.successCount || 0} 名学生`,
+          type: 'success',
+          duration: 4500
+        })
         
         // 导入成功后，设置刷新标志，通知其他页面刷新数据
         try {
@@ -216,20 +256,43 @@ const handleImport = async () => {
         // handleClear() 移到这里不合适
       } else {
         // 导入失败时，显示具体的错误信息
-        if (importResult.value.errorMessages && importResult.value.errorMessages.length > 0) {
-          ElMessage.error(`导入失败：${importResult.value.errorMessages[0]}`)
-        } else {
-          ElMessage.error('导入失败，请查看错误详情')
-        }
+        const firstError = importResult.value.errorMessages && importResult.value.errorMessages.length > 0
+          ? importResult.value.errorMessages[0]
+          : '请查看错误详情'
+        ElMessage.error(`导入失败：${firstError}`)
+        // B. 全局失败通知，切页后也能看到
+        ElNotification({
+          title: '导入失败',
+          message: firstError,
+          type: 'error',
+          duration: 0
+        })
       }
     } else {
       ElMessage.error(response.message || '导入失败')
+      ElNotification({
+        title: '导入失败',
+        message: response.message || '导入失败',
+        type: 'error',
+        duration: 0
+      })
     }
   } catch (error) {
     console.error('导入失败:', error)
     ElMessage.error('导入失败：' + error.message)
+    ElNotification({
+      title: '导入失败',
+      message: error.message || '导入过程中发生错误',
+      type: 'error',
+      duration: 0
+    })
   } finally {
     importing.value = false
+    // 关闭"处理中"通知
+    if (importingNotification) {
+      importingNotification.close()
+      importingNotification = null
+    }
     // 延迟清空提示文案
     setTimeout(() => {
       progressText.value = ''
