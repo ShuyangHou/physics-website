@@ -7,7 +7,6 @@
           <div class="header-actions">
             <el-button 
               v-if="userInfo.userType === 'admin'"
-              type="danger" 
               plain
               @click="handleLockAllGrades" 
               :loading="lockingAll"
@@ -19,7 +18,6 @@
             </el-button>
             <el-button 
               v-if="userInfo.userType === 'admin'"
-              type="success" 
               plain
               @click="handleUnlockAllGrades" 
               :loading="unlockingAll"
@@ -216,7 +214,7 @@
         <div class="table-actions">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <div class="action-buttons">
-              <el-button type="success" plain @click="handleDownloadTemplate" :disabled="!selectedGroupName || !selectedExperimentId" size="default">
+              <el-button plain @click="handleDownloadTemplate" :disabled="!selectedGroupName || !selectedExperimentId" size="default">
                 下载模板
               </el-button>
               <el-upload
@@ -225,23 +223,23 @@
                 accept=".xlsx"
                 :on-change="handleTemplateFileChange"
               >
-                <el-button type="primary" plain :disabled="!selectedGroupName || !selectedExperimentId" size="default">
+                <el-button plain :disabled="!selectedGroupName || !selectedExperimentId" size="default">
                   导入模板
                 </el-button>
               </el-upload>
-              <el-button type="warning" plain @click="setAllToN" :disabled="!selectedGroupName || !selectedExperimentId" size="default">
+              <el-button plain @click="setAllToN" :disabled="!selectedGroupName || !selectedExperimentId" size="default">
                 <el-icon><RemoveFilled /></el-icon>
                 全部设为N (不计分)
               </el-button>
-              <el-button type="info" plain @click="clearAllScores" :disabled="!selectedGroupName || !selectedExperimentId" size="default">
+              <el-button plain @click="clearAllScores" :disabled="!selectedGroupName || !selectedExperimentId" size="default">
                 <el-icon><Clock /></el-icon>
                 清空所有成绩
               </el-button>
-              <el-button v-if="userInfo.userType === 'admin'" type="danger" plain @click="handleBatchLock" :disabled="!selectedGroupName || !selectedExperimentId" :loading="batchLocking" size="default">
+              <el-button v-if="userInfo.userType === 'admin'" plain @click="handleBatchLock" :disabled="!selectedGroupName || !selectedExperimentId" :loading="batchLocking" size="default">
                 <el-icon><Lock /></el-icon>
                 全部冻结
               </el-button>
-              <el-button v-if="userInfo.userType === 'admin'" type="success" plain @click="handleBatchUnlock" :disabled="!selectedGroupName || !selectedExperimentId" :loading="batchUnlocking" size="default">
+              <el-button v-if="userInfo.userType === 'admin'" plain @click="handleBatchUnlock" :disabled="!selectedGroupName || !selectedExperimentId" :loading="batchUnlocking" size="default">
                 <el-icon><Unlock /></el-icon>
                 全部解冻
               </el-button>
@@ -314,7 +312,7 @@
                  <el-icon><Lock /></el-icon>
                  已冻结
                </el-tag>
-               <el-tag v-else type="success" size="small">
+               <el-tag v-else type="info" size="small">
                  <el-icon><Unlock /></el-icon>
                  可编辑
                </el-tag>
@@ -337,7 +335,6 @@
             <template #default="scope">
               <el-button 
                 v-if="!scope.row.isLocked && hasGrade(scope.row)" 
-                type="warning" 
                 plain
                 size="small" 
                 @click="handleLockGrade(scope.row)"
@@ -347,7 +344,6 @@
               </el-button>
               <el-button 
                 v-else-if="scope.row.isLocked" 
-                type="success" 
                 plain
                 size="small" 
                 @click="handleUnlockGrade(scope.row)"
@@ -2318,88 +2314,66 @@ onMounted(async () => {
   transition: all 0.3s ease;
 }
 
-/* 已录入成绩 - 绿色 */
+/* 已录入成绩 */
 .student-name.has-grade, .student-id.has-grade {
-  color: #67C23A;
+  color: var(--color-text);
   font-weight: 600;
 }
 
-/* 未录入成绩 - 橙色 */
+/* 未录入成绩 */
 .student-name.no-grade, .student-id.no-grade {
-  color: #E6A23C;
+  color: var(--color-text);
   font-weight: 500;
 }
 
-/* 成绩为N - 灰色 */
+/* 成绩为N */
 .student-name.grade-n, .student-id.grade-n {
-  color: #667085;
+  color: var(--color-text-secondary);
   font-style: italic;
 }
 
-/* 状态图标样式 */
+/* 状态图标样式（灰阶，靠图形区分状态） */
 .grade-icon {
   font-size: 14px;
   margin-right: 4px;
+  color: var(--color-text-secondary);
 }
 
-.student-name.has-grade .grade-icon {
-  color: #67C23A;
-}
-
-.student-name.no-grade .grade-icon {
-  color: #E6A23C;
-}
-
+.student-name.has-grade .grade-icon,
+.student-name.no-grade .grade-icon,
 .student-name.grade-n .grade-icon {
-  color: #667085;
+  color: var(--color-text-secondary);
 }
 
 /* 表格行背景色区分 */
-.grade-entry :deep(.grade-row-completed) {
-  background-color: #f7fbff;
-}
-
-.grade-entry :deep(.grade-row-new-entry) {
-  background-color: #f2fbf5;
-}
-
-.grade-entry :deep(.grade-row-modified) {
-  background-color: #fff8e8;
-}
-
-.grade-entry :deep(.grade-row-readonly) {
-  background-color: #f5f5f5;
-}
-
+.grade-entry :deep(.grade-row-completed),
+.grade-entry :deep(.grade-row-new-entry),
 .grade-entry :deep(.grade-row-pending) {
-  background-color: #fffdf7;
+  background-color: #fff;
 }
 
+/* 仅保留“未保存修改”的淡黄提示 */
+.grade-entry :deep(.grade-row-modified) {
+  background-color: #fffaef;
+}
+
+.grade-entry :deep(.grade-row-readonly),
 .grade-entry :deep(.grade-row-n) {
-  background-color: #f5f5f5;
+  background-color: var(--color-surface-soft);
 }
 
-/* 鼠标悬停效果 */
-.grade-entry :deep(.grade-row-completed:hover) {
-  background-color: #edf6ff;
-}
-
-.grade-entry :deep(.grade-row-new-entry:hover) {
-  background-color: #e8f7ed;
+/* 鼠标悬停效果（统一中性高亮） */
+.grade-entry :deep(.grade-row-completed:hover),
+.grade-entry :deep(.grade-row-new-entry:hover),
+.grade-entry :deep(.grade-row-pending:hover) {
+  background-color: var(--color-surface-soft);
 }
 
 .grade-entry :deep(.grade-row-modified:hover) {
-  background-color: #fff0c9;
+  background-color: #fff3d6;
 }
 
-.grade-entry :deep(.grade-row-readonly:hover) {
-  background-color: #eeeeee;
-}
-
-.grade-entry :deep(.grade-row-pending:hover) {
-  background-color: #fff7df;
-}
-
+.grade-entry :deep(.grade-row-readonly:hover),
 .grade-entry :deep(.grade-row-n:hover) {
   background-color: #eeeeee;
 }
@@ -2423,10 +2397,10 @@ onMounted(async () => {
 .grade-tips {
   margin-bottom: 16px;
   padding: 12px 14px;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border-light);
   border-radius: 10px;
-  color: #1e3a8a;
+  color: var(--color-text-secondary);
   line-height: 1.65;
 }
 
@@ -2442,29 +2416,17 @@ onMounted(async () => {
   font-size: 14px;
 }
 
-.progress-value.total {
-  background-color: #eaf2fa;
-  color: #245f96;
-}
-
-.progress-value.completed {
-  background-color: #eaf7ee;
-  color: #287443;
-}
-
-.progress-value.pending {
-  background-color: #fff4dc;
-  color: #8a5b0a;
-}
-
+.progress-value.total,
+.progress-value.completed,
+.progress-value.pending,
 .progress-value.grade-n {
-  background-color: #eef0f3;
-  color: #525866;
+  background-color: var(--color-surface-soft);
+  color: var(--color-text);
 }
 
 .progress-value.percentage {
-  background-color: #eaf2fa;
-  color: #245f96;
+  background-color: var(--color-surface-soft);
+  color: var(--color-text);
   font-weight: 700;
 }
 
