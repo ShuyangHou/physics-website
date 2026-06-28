@@ -3237,24 +3237,26 @@ onMounted(async () => {
 
 
 // 课表相关方法
+// 按 (套件, 单双周, 时段, 星期) 定位课表记录，兼容多种 experimentTime 格式
+const findCellSchedule = (suiteId, weekType, timeSlot, weekday) => {
+  const weekTypeText = weekType === 0 ? '单周' : '双周'
+  const weekdayNum = weekday.replace('周', '')
+  const timeString = `${weekTypeText}${weekdayNum}${timeSlot === 'morning' ? '上午' : '下午'}`
+  return scheduleList.value.find(s => {
+    const sSuiteId = s.suiteId || s.experimentSuiteId
+    const suiteMatch = sSuiteId === undefined || sSuiteId === null || String(sSuiteId) === String(suiteId)
+    const weekTypeMatch = String(s.weekType) === String(weekType)
+    const experimentTime = s.experimentTime || ''
+    const timeMatch = experimentTime === timeString ||
+                     experimentTime.replace(/^(单|双)周/, '周') === timeString ||
+                     experimentTime.replace(/^(单|双)/, '') === timeString
+    return suiteMatch && weekTypeMatch && timeMatch
+  })
+}
+
 const getGroupIdsForCell = (suiteId, weekType, timeSlot, weekday) => {
   try {
-    // 构建时间字符串
-    const weekTypeText = weekType === 0 ? '单周' : '双周'
-    const weekdayNum = weekday.replace('周', '')
-    const timeString = `${weekTypeText}${weekdayNum}${timeSlot === 'morning' ? '上午' : '下午'}`
-    
-    // 查找对应的安排 - 支持多种格式匹配
-    const schedule = scheduleList.value.find(s => {
-      const sSuiteId = s.suiteId || s.experimentSuiteId
-      const suiteMatch = sSuiteId === undefined || sSuiteId === null || String(sSuiteId) === String(suiteId)
-      const weekTypeMatch = String(s.weekType) === String(weekType)
-      const experimentTime = s.experimentTime || ''
-      const timeMatch = experimentTime === timeString || 
-                       experimentTime.replace(/^(单|双)周/, '周') === timeString ||
-                       experimentTime.replace(/^(单|双)/, '') === timeString
-      return suiteMatch && weekTypeMatch && timeMatch
-    })
+    const schedule = findCellSchedule(suiteId, weekType, timeSlot, weekday)
     
     if (schedule && schedule.groupIds) {
       // 解析groupIds字符串
@@ -3287,21 +3289,7 @@ const getGroupIdsForCell = (suiteId, weekType, timeSlot, weekday) => {
 
 const getTeacherNamesForCell = (suiteId, weekType, timeSlot, weekday) => {
   try {
-    // 构建时间字符串
-    const weekTypeText = weekType === 0 ? '单周' : '双周'
-    const weekdayNum = weekday.replace('周', '')
-    const timeString = `${weekTypeText}${weekdayNum}${timeSlot === 'morning' ? '上午' : '下午'}`
-    
-    // 查找对应的安排
-    const schedule = scheduleList.value.find(s => {
-      const sSuiteId = s.suiteId || s.experimentSuiteId
-      const suiteMatch = sSuiteId === undefined || sSuiteId === null || String(sSuiteId) === String(suiteId)
-      const weekTypeMatch = String(s.weekType) === String(weekType)
-      const timeMatch = (s.experimentTime || '') === timeString || 
-                       (s.experimentTime || '').replace(/^(单|双)周/, '周') === timeString ||
-                       (s.experimentTime || '').replace(/^(单|双)/, '') === timeString
-      return suiteMatch && weekTypeMatch && timeMatch
-    })
+    const schedule = findCellSchedule(suiteId, weekType, timeSlot, weekday)
     
     // 优先方案：从schedule.teacherIds获取（每个时间段固定的5个教师）
     if (schedule && schedule.teacherIds) {
@@ -3466,29 +3454,6 @@ const getTeacherNamesForCell = (suiteId, weekType, timeSlot, weekday) => {
   } catch (error) {
     console.error('获取教师姓名失败:', error)
     return { teacherNames: [], introCourseFlags: [] }
-  }
-}
-
-const getExperimentInfoForCell = (suiteId, weekType, timeSlot, weekday) => {
-  try {
-    // 构建时间字符串
-    const timeString = `${weekday}${timeSlot === 'morning' ? '上午' : 'afternoon'}`
-    
-    // 查找对应的安排
-    const schedule = scheduleList.value.find(s => 
-      s.suiteId === suiteId && 
-      s.weekType === weekType && 
-      s.experimentTime === timeString
-    )
-    
-    if (schedule && schedule.groupIds) {
-      // 这里可以根据需要返回实验信息
-      return '实验安排'
-    }
-    return ''
-  } catch (error) {
-    console.error('获取实验信息失败:', error)
-    return ''
   }
 }
 
