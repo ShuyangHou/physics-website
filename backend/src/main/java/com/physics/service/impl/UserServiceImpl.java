@@ -1,6 +1,7 @@
 package com.physics.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.physics.dto.LoginRequest;
 import com.physics.dto.LoginResponse;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.HashSet;
@@ -226,6 +228,22 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             Object::toString
         );
         return generateUniqueUsernameInternal(baseUsername, new HashSet<>(existingUsernames));
+    }
+
+    @Override
+    public int updateGroupingByIds(List<Long> userIds, String groupName, Long semesterId, Long suiteId, Integer weekType) {
+        if (userIds == null || userIds.isEmpty()) {
+            return 0;
+        }
+        UpdateWrapper<User> wrapper = new UpdateWrapper<>();
+        wrapper.set("group_name", groupName)
+               .set("semester_id", semesterId)
+               .set("suite_id", suiteId)
+               .set("week_type", weekType)
+               .set("update_time", LocalDateTime.now())
+               .in("user_id", userIds);
+        // update 返回是否成功；这里以入参数量作为受影响行数的近似返回
+        return this.update(wrapper) ? userIds.size() : 0;
     }
     
     @Override
