@@ -45,7 +45,7 @@
             </el-button>
 
             <el-button type="warning" @click="openTeacherAssignOverview" v-if="isAdmin && !readonly" size="large">
-              <el-icon><User /></el-icon>
+              <el-icon><Grid /></el-icon>
               教师分配
             </el-button>
             
@@ -517,7 +517,7 @@
           </div>
           <div class="generation-actions">
             <el-button type="primary" @click="handleGenerateScheduleFromGroups" :loading="generatingSchedule">
-              <el-icon><Star /></el-icon>
+              <el-icon><MagicStick /></el-icon>
               生成课表
             </el-button>
             <el-button @click="resetManualGrouping">重新分组</el-button>
@@ -530,7 +530,7 @@
         <div class="dialog-footer split">
           <div class="footer-left">
             <el-button link type="primary" @click="openTeacherSettingDialog">
-              <el-icon><User /></el-icon>
+              <el-icon><Setting /></el-icon>
               教师设置
             </el-button>
           </div>
@@ -543,7 +543,7 @@
               :loading="generatingSchedule"
               :disabled="!hasExistingGroups"
             >
-              <el-icon><Star /></el-icon>
+              <el-icon><MagicStick /></el-icon>
               生成课表
             </el-button>
           </div>
@@ -783,7 +783,7 @@ import { getCurrentSemester, getSemesterList, getWeekInfo } from '@/api/semester
 import { getSuiteList, getAllSuites } from '@/api/suite'
 import { batchAssignItems, getGroupExperimentByGroup, getGroupExperimentsByTime, getAllGroupExperiments, getStudentSchedule } from '@/api/groupExperiment'
 import { assignGroup } from '@/api/user'
-import { InfoFilled, CircleCheckFilled, Star, User, Select, Printer, Refresh } from '@element-plus/icons-vue'
+import { InfoFilled, CircleCheckFilled, Star, Grid, Setting, MagicStick, Select, Printer, Refresh } from '@element-plus/icons-vue'
 import { closePrintWindow, printWhenLoaded, writePrintDocument } from '@/utils/printWindow'
 
 // 定义 props
