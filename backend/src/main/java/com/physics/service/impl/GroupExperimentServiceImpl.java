@@ -535,45 +535,49 @@ public class GroupExperimentServiceImpl extends ServiceImpl<GroupExperimentMappe
                 return false;
             }
 
-            // 对每个实验项逐周更新；where 必须带 time_slot，且可选用 group_name IN boundGroups
+            // 预先生成本周次集合的 experiment_time 文案，供 IN 一次匹配所有周次
+            List<String> weekStrs = new ArrayList<>();
+            for (Integer w : weeks) {
+                weekStrs.add(String.format("第%d周", w));
+            }
+
+            // 对每个实验项更新：用 experiment_time IN (所有周次) 一条 UPDATE 取代“逐周一条”，
+            // 大幅减少对远程库的往返。where 必须带 time_slot，且可选用 group_name IN boundGroups。
             for (TeacherAssignmentRequest.TeacherAssignmentItem item : request.getAssignments()) {
                 if (item == null || item.getExperimentId() == null || item.getTeacherId() == null) {
                     continue;
                 }
 
-                for (Integer w : weeks) {
-                    String weekStr = String.format("第%d周", w);
-                    UpdateWrapper<GroupExperiment> uw = new UpdateWrapper<>();
-                    uw.eq("semester_id", request.getSemesterId())
-                      .eq("suite_id", request.getSuiteId())
-                      .eq("experiment_id", item.getExperimentId())
-                      .eq("experiment_time", weekStr)
-                      .eq("time_slot", fullTimeSlot)
-                      .set("teacher_id", item.getTeacherId());
-                    if (item.getIsIntroCourse() != null) {
-                        uw.set("is_intro_course", item.getIsIntroCourse());
-                    }
-                    if (!boundGroups.isEmpty()) {
-                        uw.in("group_name", boundGroups);
-                    }
-                    this.update(uw);
+                UpdateWrapper<GroupExperiment> uw = new UpdateWrapper<>();
+                uw.eq("semester_id", request.getSemesterId())
+                  .eq("suite_id", request.getSuiteId())
+                  .eq("experiment_id", item.getExperimentId())
+                  .in("experiment_time", weekStrs)
+                  .eq("time_slot", fullTimeSlot)
+                  .set("teacher_id", item.getTeacherId());
+                if (item.getIsIntroCourse() != null) {
+                    uw.set("is_intro_course", item.getIsIntroCourse());
+                }
+                if (!boundGroups.isEmpty()) {
+                    uw.in("group_name", boundGroups);
+                }
+                this.update(uw);
 
-                    // 兼容旧数据：如果历史记录没有 time_slot，则在限定 group_name 的前提下回填并更新
-                    if (!boundGroups.isEmpty()) {
-                        UpdateWrapper<GroupExperiment> legacy = new UpdateWrapper<>();
-                        legacy.eq("semester_id", request.getSemesterId())
-                              .eq("suite_id", request.getSuiteId())
-                              .eq("experiment_id", item.getExperimentId())
-                              .eq("experiment_time", weekStr)
-                              .in("group_name", boundGroups)
-                              .and(x -> x.isNull("time_slot").or().eq("time_slot", ""))
-                              .set("time_slot", fullTimeSlot)
-                              .set("teacher_id", item.getTeacherId());
-                        if (item.getIsIntroCourse() != null) {
-                            legacy.set("is_intro_course", item.getIsIntroCourse());
-                        }
-                        this.update(legacy);
+                // 兼容旧数据：如果历史记录没有 time_slot，则在限定 group_name 的前提下回填并更新
+                if (!boundGroups.isEmpty()) {
+                    UpdateWrapper<GroupExperiment> legacy = new UpdateWrapper<>();
+                    legacy.eq("semester_id", request.getSemesterId())
+                          .eq("suite_id", request.getSuiteId())
+                          .eq("experiment_id", item.getExperimentId())
+                          .in("experiment_time", weekStrs)
+                          .in("group_name", boundGroups)
+                          .and(x -> x.isNull("time_slot").or().eq("time_slot", ""))
+                          .set("time_slot", fullTimeSlot)
+                          .set("teacher_id", item.getTeacherId());
+                    if (item.getIsIntroCourse() != null) {
+                        legacy.set("is_intro_course", item.getIsIntroCourse());
                     }
+                    this.update(legacy);
                 }
             }
 
