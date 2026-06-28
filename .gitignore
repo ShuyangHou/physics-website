@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+target/
+
+# Logs and local runtime files
+*.log
+backend/uploads/
+
+# IDE and local agent metadata
+.idea/
+.vscode/
+.agents/
+.codex/
+
+# Local environment files
+.env
+.env.*
+
+# OS files
+Thumbs.db
+.DS_Store

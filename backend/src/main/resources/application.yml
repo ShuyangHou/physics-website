@@ -1,0 +1,106 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: physics-website-backend
+  main:
+    allow-bean-definition-overriding: true
+  redis:
+     database: 0
+     host: 119.91.252.167
+     port: 6379
+     password: Redis!!mecs2389@Acc
+
+  # 数据库配置
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://119.91.252.167:3306/physics-website?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8
+    username: physics-website
+    password: PkscGB4Mhst36pWZ
+    druid:
+      # 初始连接数
+      initial-size: 5
+      # 最小连接池数量
+      min-idle: 10
+      # 最大连接池数量
+      max-active: 20
+      # 配置获取连接等待超时的时间
+      max-wait: 60000
+      # 配置间隔多久才进行一次检测，检测需要关闭的空闲连接，单位是毫秒
+      time-between-eviction-runs-millis: 60000
+      # 配置一个连接在池中最小生存的时间，单位是毫秒
+      min-evictable-idle-time-millis: 300000
+      # 配置一个连接在池中最大生存的时间，单位是毫秒
+      max-evictable-idle-time-millis: 900000
+      # 配置检测连接是否有效
+      validation-query: SELECT 1 FROM DUAL
+      test-while-idle: true
+      test-on-borrow: false
+      test-on-return: false
+      web-stat-filter:
+        enabled: true
+      stat-view-servlet:
+        enabled: true
+        # 设置白名单，不填则允许所有访问
+        allow:
+        url-pattern: /druid/*
+        # 控制台管理用户名和密码
+        login-username: admin
+        login-password: 123456
+      filter:
+        stat:
+          enabled: true
+          # 慢SQL记录
+          log-slow-sql: true
+          slow-sql-millis: 1000
+          merge-sql: true
+        wall:
+          config:
+            multi-statement-allow: true
+
+  # 文件上传配置
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 100MB
+
+# MyBatis Plus配置
+mybatis-plus:
+  configuration:
+    # 开启驼峰命名
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      # 主键类型
+      id-type: auto
+      # 逻辑删除配置
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  mapper-locations: classpath*:mapper/**/*Mapper.xml
+
+# JWT配置
+jwt:
+  # 密钥
+  secret: physics-lab-secret-key
+  # 过期时间（毫秒）
+  expiration: 86400000
+
+# 文件上传配置
+file:
+  upload:
+    # Windows 本地开发绝对路径；部署到 Linux 时改为 /www/physics-website/experimentFile
+    path: C:/Users/d/Desktop/uploads
+    max-size: 10485760  # 10MB
+
+# 日志配置
+logging:
+  level:
+    com.physics: info
+    org.springframework.security: warn
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n" 

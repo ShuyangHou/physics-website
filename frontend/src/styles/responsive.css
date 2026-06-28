@@ -1,0 +1,186 @@
+/* 全局响应式样式 */
+/* imakerlab完成 */
+
+/* 移动端断点 */
+@media (max-width: 768px) {
+  /* 通用容器样式 */
+  .el-card {
+    margin-bottom: 15px;
+  }
+  
+  .el-card__header {
+    padding: 15px;
+  }
+  
+  .el-card__body {
+    padding: 16px;
+  }
+  
+  /* 表格响应式 */
+  .el-table {
+    font-size: 14px;
+  }
+  
+  .el-table .cell {
+    padding: 8px 0;
+  }
+  
+  /* 表单响应式 */
+  .el-form-item {
+    margin-bottom: 15px;
+  }
+  
+  .el-form-item__label {
+    font-size: 15px;
+    line-height: 1.4;
+    padding-bottom: 5px;
+  }
+  
+  /* 按钮组响应式 */
+  .el-button-group {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .el-button-group .el-button {
+    margin-bottom: 5px;
+  }
+  
+  .el-button-group .el-button:last-child {
+    margin-bottom: 0;
+  }
+  
+  /* 对话框响应式 */
+  .el-dialog {
+    width: 90% !important;
+    margin: 5vh auto !important;
+  }
+  
+  .el-dialog__body {
+    padding: 15px;
+  }
+  
+  /* 分页响应式 */
+  .el-pagination {
+    text-align: center;
+    justify-content: center;
+  }
+  
+  .el-pagination .el-pagination__total {
+    display: none;
+  }
+  
+  /* 搜索区域响应式 */
+  .search-section .el-row {
+    flex-direction: column;
+  }
+  
+  .search-section .el-col {
+    margin-bottom: 10px;
+  }
+  
+  .search-section .el-col:last-child {
+    margin-bottom: 0;
+    text-align: left;
+  }
+  
+  /* 操作按钮响应式 */
+  .action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .action-buttons .el-button {
+    width: 100%;
+  }
+  
+  /* 描述列表响应式 */
+  .el-descriptions {
+    font-size: 14px;
+  }
+  
+  .el-descriptions__label {
+    padding: 8px 12px;
+  }
+  
+  .el-descriptions__content {
+    padding: 8px 12px;
+  }
+  
+  /* 上传组件响应式 */
+  .el-upload {
+    width: 100%;
+  }
+  
+  .el-upload-dragger {
+    width: 100%;
+  }
+  
+  /* 下拉菜单响应式 */
+  .el-dropdown-menu {
+    max-width: 200px;
+  }
+  
+  /* 消息提示响应式 */
+  .el-message {
+    min-width: 200px;
+    max-width: 90%;
+  }
+  
+  /* 面包屑响应式 */
+  .el-breadcrumb {
+    font-size: 14px;
+  }
+  
+  /* 标签页响应式 */
+  .el-tabs__nav {
+    flex-wrap: wrap;
+  }
+  
+  .el-tabs__item {
+    padding: 0 10px;
+  }
+}
+
+/* 超小屏幕断点 */
+@media (max-width: 480px) {
+  .el-dialog {
+    width: 95% !important;
+    margin: 2vh auto !important;
+  }
+  
+  .el-table {
+    font-size: 14px;
+  }
+  
+  .el-form-item__label {
+    font-size: 15px;
+  }
+  
+  .el-button {
+    min-height: 40px;
+    font-size: 15px;
+    padding: 9px 14px;
+  }
+  
+  .page-title {
+    font-size: 22px;
+  }
+  
+  .page-description {
+    font-size: 15px;
+  }
+}
+
+/* 横屏模式优化 */
+@media (max-width: 768px) and (orientation: landscape) {
+  .el-dialog {
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+  
+  .sidebar-container.mobile-sidebar {
+    width: 200px;
+  }
+}
