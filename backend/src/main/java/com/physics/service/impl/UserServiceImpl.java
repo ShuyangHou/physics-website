@@ -81,79 +81,76 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     public ImportResult importStudents(List<StudentImportDTO> students) {
         ImportResult result = new ImportResult();
         result.setTotalCount(students.size());
-        
-        try {
-            // ========== 性能优化开始 ==========
-            // 优化1：一次性查出已存在学号，避免循环中重复查询数据库
-            // 时间复杂度：从 O(n*m) 优化到 O(n)，其中 n 是导入数量，m 是数据库查询次数
-            // 注意：只查询学生用户的学号，管理员和教师不进行学号重复校验
-            List<String> existingSchoolIds = this.listObjs(
-                new QueryWrapper<User>().select("school_id").eq("user_type", "student"),
-                Object::toString
-            );
-            Set<String> existingIdSet = new HashSet<>(existingSchoolIds);
-             // 预取现有学生姓名集合，用于生成不重复姓名后缀
-            List<String> existingRealNames = this.listObjs(
-                new QueryWrapper<User>().select("real_name").eq("user_type", "student"),
-                Object::toString
-            );
-            Set<String> existingNameSet = new HashSet<>(existingRealNames);
-            // 预取所有已存在用户名集合（所有用户类型均需唯一）
-            List<String> existingUsernames = this.listObjs(
-                new QueryWrapper<User>().select("username"),
-                Object::toString
-            );
-            Set<String> existingUsernameSet = new HashSet<>(existingUsernames);
-            
-            List<User> userList = new ArrayList<>();
-            
-            // 验证和准备数据
-            for (int i = 0; i < students.size(); i++) {
-                StudentImportDTO student = students.get(i);
-                
-                // 验证必填字段
-                if (!StringUtils.hasText(student.getSchoolId()) || 
-                    !StringUtils.hasText(student.getRealName()) || 
-                    !StringUtils.hasText(student.getClassId())) {
-                    result.setFailCount(result.getFailCount() + 1);
-                    result.addErrorMessage("第" + (i + 2) + "行：学号、姓名、班号不能为空");
-                    return result; // 遇到第一个错误就停止
-                }
-                
-                // 学号不做去重校验：保留原学号。仅对用户名进行唯一化处理。
-                
-                // 创建用户对象，但不立即保存
-                User user = new User();
-                // 以学号为用户名基础，若重复则追加后缀生成唯一用户名
-                String baseUsername = student.getSchoolId();
-                String uniqueUsername = generateUniqueUsernameInternal(baseUsername, existingUsernameSet);
-                user.setUsername(uniqueUsername);
-                user.setPassword("0000"); // 默认密码
-                // 生成不重复的姓名（如 张三 -> 张三(2) -> 张三(3) ...）
-                String baseName = student.getRealName();
-                String uniqueName = generateUniqueNameInternal(baseName, existingNameSet);
-                user.setRealName(uniqueName);
-                user.setSchoolId(student.getSchoolId());
-                user.setClassId(student.getClassId());
-                user.setUserType("student"); // 统一设置为学生
-                
-                userList.add(user);
+
+        // ========== 性能优化开始 ==========
+        // 优化1：一次性查出已存在学号，避免循环中重复查询数据库
+        // 时间复杂度：从 O(n*m) 优化到 O(n)，其中 n 是导入数量，m 是数据库查询次数
+        // 注意：只查询学生用户的学号，管理员和教师不进行学号重复校验
+        List<String> existingSchoolIds = this.listObjs(
+            new QueryWrapper<User>().select("school_id").eq("user_type", "student"),
+            Object::toString
+        );
+        Set<String> existingIdSet = new HashSet<>(existingSchoolIds);
+         // 预取现有学生姓名集合，用于生成不重复姓名后缀
+        List<String> existingRealNames = this.listObjs(
+            new QueryWrapper<User>().select("real_name").eq("user_type", "student"),
+            Object::toString
+        );
+        Set<String> existingNameSet = new HashSet<>(existingRealNames);
+        // 预取所有已存在用户名集合（所有用户类型均需唯一）
+        List<String> existingUsernames = this.listObjs(
+            new QueryWrapper<User>().select("username"),
+            Object::toString
+        );
+        Set<String> existingUsernameSet = new HashSet<>(existingUsernames);
+
+        List<User> userList = new ArrayList<>();
+
+        // 验证和准备数据
+        for (int i = 0; i < students.size(); i++) {
+            StudentImportDTO student = students.get(i);
+
+            // 验证必填字段
+            if (!StringUtils.hasText(student.getSchoolId()) ||
+                !StringUtils.hasText(student.getRealName()) ||
+                !StringUtils.hasText(student.getClassId())) {
+                result.setFailCount(result.getFailCount() + 1);
+                result.addErrorMessage("第" + (i + 2) + "行：学号、姓名、班号不能为空");
+                return result; // 遇到第一个错误就停止（此时尚未写库，无需回滚）
             }
-            
-            // 优化3：批量保存，每1000条提交一次
-            // 数据库性能：从 N 次单条插入优化到 N/1000 次批量插入，减少数据库 round-trip
-            if (!userList.isEmpty()) {
-                this.saveBatch(userList, 1000);
-                result.setSuccessCount(userList.size());
-            }
-            
-            result.setMessage("导入成功，共导入 " + result.getSuccessCount() + " 名学生");
-            
-        } catch (Exception e) {
-            result.setFailCount(result.getFailCount() + 1);
-            result.addErrorMessage("导入过程中发生错误：" + e.getMessage());
+
+            // 学号不做去重校验：保留原学号。仅对用户名进行唯一化处理。
+
+            // 创建用户对象，但不立即保存
+            User user = new User();
+            // 以学号为用户名基础，若重复则追加后缀生成唯一用户名
+            String baseUsername = student.getSchoolId();
+            String uniqueUsername = generateUniqueUsernameInternal(baseUsername, existingUsernameSet);
+            user.setUsername(uniqueUsername);
+            user.setPassword("0000"); // 默认密码
+            // 生成不重复的姓名（如 张三 -> 张三(2) -> 张三(3) ...）
+            String baseName = student.getRealName();
+            String uniqueName = generateUniqueNameInternal(baseName, existingNameSet);
+            user.setRealName(uniqueName);
+            user.setSchoolId(student.getSchoolId());
+            user.setClassId(student.getClassId());
+            user.setUserType("student"); // 统一设置为学生
+
+            userList.add(user);
         }
-        
+
+        // 优化3：批量保存，每1000条提交一次
+        // 数据库性能：从 N 次单条插入优化到 N/1000 次批量插入，减少数据库 round-trip
+        // 说明：这里不再用 try/catch 吞掉异常。一旦 saveBatch 中途失败，异常会向上抛出，
+        // 类级别的 @Transactional 会整体回滚本次导入，避免留下“半成功”的脏数据；
+        // 由 Controller 统一捕获并返回失败信息给前端。
+        if (!userList.isEmpty()) {
+            this.saveBatch(userList, 1000);
+            result.setSuccessCount(userList.size());
+        }
+
+        result.setMessage("导入成功，共导入 " + result.getSuccessCount() + " 名学生");
+
         // ========== 性能优化总结 ==========
         // 1. 数据库查询：从 N 次优化到 1 次
         // 2. 重复检查：从 O(n) 优化到 O(1)
@@ -220,6 +217,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             Object::toString
         );
         return generateUniqueNameInternal(baseRealName, new HashSet<>(existingRealNames));
+    }
+
+    @Override
+    public String generateUniqueUsername(String baseUsername) {
+        List<String> existingUsernames = this.listObjs(
+            new QueryWrapper<User>().select("username"),
+            Object::toString
+        );
+        return generateUniqueUsernameInternal(baseUsername, new HashSet<>(existingUsernames));
     }
     
     @Override

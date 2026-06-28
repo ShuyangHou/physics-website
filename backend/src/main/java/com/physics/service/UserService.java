@@ -68,4 +68,11 @@ public interface UserService extends IService<User> {
      * 如：张三 -> 张三(2) -> 张三(3)...
      */
     String generateUniqueStudentRealName(String baseRealName);
+
+    /**
+     * 生成不与任何现有用户名重复的用户名（必要时追加后缀）。
+     * 内部只查询一次现有用户名集合，避免循环逐次查库。
+     * 如：2021001 -> 2021001(2) -> 2021001(3)...
+     */
+    String generateUniqueUsername(String baseUsername);
 } 
