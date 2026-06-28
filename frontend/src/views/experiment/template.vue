@@ -28,7 +28,6 @@
           <el-button @click="resetSearch">重置</el-button>
         </el-col>
         <el-col :span="8" style="text-align: right;">
-          <el-button v-if="isAdmin" type="info" @click="testFileConfig" size="small">测试文件配置</el-button>
           <el-button v-if="isAdmin" type="success" @click="openCreateDialog">新建实验</el-button>
         </el-col>
       </el-row>
@@ -168,7 +167,6 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Document, Download, Delete, DocumentRemove, Upload } from '@element-plus/icons-vue'
-import request from '@/utils/request'
 import { getExperimentList, addExperiment, updateExperiment, deleteExperiment } from '@/api/experiment'
 import { uploadFile, downloadFile } from '@/api/file'
 import { formatDateTime } from '@/utils/date'
@@ -377,35 +375,6 @@ const removeTemplate = async (row) => {
     }
   }
 }
-
-// 测试文件配置
-const testFileConfig = async () => {
-  try {
-    const response = await request.get('/file-test/config')
-    
-    const config = response.data
-    let message = `文件上传配置信息：\n`
-    message += `上传目录: ${config.uploadRoot}\n`
-    message += `绝对路径: ${config.absolutePath}\n`
-    message += `目录存在: ${config.directoryExists ? '是' : '否'}\n`
-    message += `可读: ${config.canRead ? '是' : '否'}\n`
-    message += `可写: ${config.canWrite ? '是' : '否'}\n`
-    message += `文件数量: ${config.fileCount || 0}\n`
-    
-    if (config.sampleFiles && config.sampleFiles.length > 0) {
-      message += `示例文件: ${config.sampleFiles.join(', ')}`
-    }
-    
-    await ElMessageBox.alert(message, '文件配置信息', {
-      confirmButtonText: '确定',
-      type: 'info'
-    })
-  } catch (error) {
-    console.error('获取文件配置失败:', error)
-    ElMessage.error('获取文件配置失败')
-  }
-}
-
 
 // 编辑
 const handleEdit = (row) => {
