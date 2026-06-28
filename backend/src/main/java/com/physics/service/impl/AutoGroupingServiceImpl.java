@@ -411,9 +411,11 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
         try {
             log.info("开始更新学生分组，班级ID列表: {}, 分组ID列表: {}, weekType: {}", classIds, groupIds, weekType);
             
-            // 重要：现在支持按学期、实验套、周类型分别存储分组信息
-            // 单周和双周可以有不同的分组，不会相互覆盖
-            // 通过 (semester_id, suite_id, week_type, group_name) 唯一区分
+            // 说明：每个学生在 user 表上只保存一份 group_name/semester_id/suite_id/week_type，
+            // 即一个学生同一时间只属于一个分组。常规情况下一个学生只上单周或只上双周，
+            // 故单行模型可满足；若对同一批学生再以不同 weekType 重新分组，会覆盖其原分组
+            // （特殊学生需手动调整）。如需"同一学生在单/双周分属不同组"，须改为独立的
+            // 学生-分组关联表 (user_id, semester_id, suite_id, week_type, group_name)。
             log.info("更新学生分组，学期ID: {}, 实验套ID: {}, 周类型: {}", semesterId, suiteId, weekType);
             
             // 解析班级列表
