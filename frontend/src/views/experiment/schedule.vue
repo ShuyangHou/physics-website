@@ -623,7 +623,7 @@
                 <p>教师课表将按照单周/双周分组显示</p>
                 <p>包含各时间段的教师安排和小组信息</p>
                 <p>格式：一行显示两个小组，一行显示一个老师</p>
-                <p>字体大小已优化为7px，适合打印</p>
+                <p>黑白表格、字体已放大，适合打印</p>
               </template>
             </el-alert>
           </div>
@@ -4010,33 +4010,37 @@ const printTeacherSchedule = async () => {
             @page{size:A4 landscape;margin:10mm}
             *{box-sizing:border-box !important;margin:0 !important;padding:0 !important}
             html,body{width:100% !important;height:100% !important;transform:scale(1) !important;transform-origin:top left !important}
-            body{font-family:'Microsoft YaHei','SimSun',Arial,sans-serif !important;margin:8px !important;background:#fff !important;font-size:11px !important;line-height:1.4 !important}
+            body{font-family:'Microsoft YaHei','SimSun',Arial,sans-serif !important;margin:8px !important;background:#fff !important;font-size:13px !important;line-height:1.5 !important}
             .suite-schedule{margin-bottom:30px !important;page-break-after:always !important}
             .suite-title{text-align:center !important;font-size:20px !important;font-weight:bold !important;margin-bottom:15px !important;color:#000 !important}
             .week-title{font-size:16px !important;font-weight:bold !important;margin:12px 0 !important;color:#000 !important;border-left:3px solid #000 !important;padding-left:12px !important}
-            .schedule-table{width:100% !important;margin:12px 0 !important;border:1px solid #000 !important;border-radius:6px !important;overflow:visible !important;table-layout:fixed !important;display:block !important}
-            .table-header{display:flex !important;background:#f8f9fa !important;flex-direction:row !important;width:100% !important}
-            .header-cell{flex:0 0 18.4% !important;width:18.4% !important;border-right:1px solid #000 !important;padding:8px 4px !important;text-align:center !important;font-weight:bold !important;background:#f8f9fa !important;font-size:11px !important;color:#000 !important;min-width:0 !important;max-width:18.4% !important;overflow:visible !important}
-            .header-cell:first-child{background:#e3f2fd !important;color:#000 !important;flex:0 0 60px !important;width:60px !important;min-width:60px !important;max-width:60px !important}
+            .schedule-table{width:100% !important;margin:12px 0 !important;border:1px solid #000 !important;border-radius:0 !important;overflow:visible !important;table-layout:fixed !important;display:block !important}
+            .table-header{display:flex !important;background:#f2f2f2 !important;flex-direction:row !important;width:100% !important}
+            .header-cell{flex:1 1 0 !important;width:auto !important;border-right:1px solid #000 !important;padding:8px 4px !important;text-align:center !important;font-weight:bold !important;background:#f2f2f2 !important;font-size:14px !important;color:#000 !important;min-width:0 !important;max-width:none !important;overflow:visible !important}
+            .header-cell.time-header{background:#f2f2f2 !important;color:#000 !important;flex:0 0 96px !important;width:96px !important;min-width:96px !important;max-width:96px !important}
             .header-cell:last-child{border-right:none !important}
             .table-body{display:flex !important;flex-direction:column !important}
+            .week-block{display:flex !important;flex-direction:row !important;border-bottom:1px solid #000 !important;width:100% !important}
+            .week-block:last-child{border-bottom:none !important}
+            .week-label-cell{flex:0 0 36px !important;width:36px !important;min-width:36px !important;max-width:36px !important;display:flex !important;align-items:center !important;justify-content:center !important;background:#f2f2f2 !important;border-right:1px solid #000 !important;font-weight:bold !important;font-size:14px !important;color:#000 !important;text-align:center !important}
+            .week-rows{display:flex !important;flex-direction:column !important;flex:1 1 0 !important;min-width:0 !important}
             .table-row{display:flex !important;border-bottom:1px solid #000 !important;flex-direction:row !important;width:100% !important}
             .table-row:last-child{border-bottom:none !important}
-            .time-cell{flex:0 0 60px !important;width:60px !important;min-width:60px !important;max-width:60px !important;padding:8px 4px !important;text-align:center !important;background:#f3e5f5 !important;border-right:1px solid #000 !important;border-bottom:1px solid #000 !important;font-weight:bold !important;color:#000 !important;font-size:12px !important;display:flex !important;align-items:center !important;justify-content:center !important}
-            .schedule-cell{flex:0 0 18.4% !important;width:18.4% !important;min-width:0 !important;max-width:18.4% !important;border-right:1px solid #000 !important;padding:6px 4px !important;text-align:left !important;min-height:100px !important;background:white !important;display:flex !important;align-items:flex-start !important;overflow:visible !important}
+            .time-cell{flex:0 0 60px !important;width:60px !important;min-width:60px !important;max-width:60px !important;padding:8px 4px !important;text-align:center !important;background:#f2f2f2 !important;border-right:1px solid #000 !important;font-weight:bold !important;color:#000 !important;font-size:15px !important;display:flex !important;align-items:center !important;justify-content:center !important}
+            .schedule-cell{flex:1 1 0 !important;width:auto !important;min-width:0 !important;max-width:none !important;border-right:1px solid #000 !important;padding:6px 4px !important;text-align:left !important;min-height:120px !important;background:white !important;display:flex !important;align-items:flex-start !important;overflow:visible !important}
             .schedule-cell:last-child{border-right:none !important}
-            .cell-content{width:100% !important;min-height:100px !important;display:flex !important;flex-direction:row !important;justify-content:space-between !important;align-items:flex-start !important;gap:0 !important;padding:0 !important;margin:0 !important;overflow:visible !important}
+            .cell-content{width:100% !important;min-height:120px !important;display:flex !important;flex-direction:row !important;justify-content:space-between !important;align-items:flex-start !important;gap:0 !important;padding:0 !important;margin:0 !important;overflow:visible !important}
             .left-section{flex:1 !important;min-width:0 !important;max-width:50% !important;display:flex !important;align-items:flex-start !important;justify-content:flex-start !important;padding-right:8px !important;padding-top:0 !important;overflow:visible !important}
             .right-section{flex:1 !important;min-width:0 !important;max-width:50% !important;display:flex !important;flex-direction:row !important;align-items:flex-start !important;justify-content:flex-start !important;padding-left:8px !important;overflow:visible !important}
             .divider{width:2px !important;background:#000 !important;margin:0 6px !important;align-self:stretch !important;flex-shrink:0 !important;flex-grow:0 !important}
-            .group-ids{margin:0 !important;padding:0 !important;font-size:9px !important;line-height:1.8 !important;color:#000 !important;font-weight:normal !important;white-space:pre-line !important;word-break:keep-all !important;overflow-wrap:break-word !important;text-align:left !important;font-family:'Microsoft YaHei','SimSun',monospace !important;overflow:visible !important;display:flex !important;flex-direction:column !important;gap:0 !important}
-            .group-row{display:flex !important;flex-direction:row !important;justify-content:flex-start !important;align-items:center !important;gap:8px !important;min-height:14px !important;height:14px !important;line-height:14px !important}
-            .group-item{font-size:9px !important;line-height:14px !important;height:14px !important;display:flex !important;align-items:center !important}
+            .group-ids{margin:0 !important;padding:0 !important;font-size:12px !important;line-height:1.8 !important;color:#000 !important;font-weight:normal !important;white-space:pre-line !important;word-break:keep-all !important;overflow-wrap:break-word !important;text-align:left !important;font-family:'Microsoft YaHei','SimSun',monospace !important;overflow:visible !important;display:flex !important;flex-direction:column !important;gap:0 !important}
+            .group-row{display:flex !important;flex-direction:row !important;justify-content:flex-start !important;align-items:center !important;gap:8px !important;min-height:18px !important;height:18px !important;line-height:18px !important}
+            .group-item{font-size:12px !important;line-height:18px !important;height:18px !important;display:flex !important;align-items:center !important}
             .teacher-names-column{display:flex !important;flex-direction:column !important;gap:0 !important;flex:1 !important;min-width:0 !important;padding:0 !important;margin:0 !important;overflow:visible !important}
-            .teacher-name-cell{text-align:left !important;font-size:9px !important;line-height:14px !important;min-height:14px !important;height:14px !important;color:#000 !important;font-weight:normal !important;word-break:keep-all !important;overflow-wrap:break-word !important;font-family:'Microsoft YaHei','SimSun',monospace !important;padding:0 !important;margin:0 !important;white-space:normal !important;writing-mode:horizontal-tb !important;min-width:60px !important;overflow:visible !important;display:flex !important;align-items:center !important}
+            .teacher-name-cell{text-align:left !important;font-size:12px !important;line-height:18px !important;min-height:18px !important;height:18px !important;color:#000 !important;font-weight:normal !important;word-break:keep-all !important;overflow-wrap:break-word !important;font-family:'Microsoft YaHei','SimSun',monospace !important;padding:0 !important;margin:0 !important;white-space:normal !important;writing-mode:horizontal-tb !important;min-width:60px !important;overflow:visible !important;display:flex !important;align-items:center !important}
             .divider-vertical{width:2px !important;background:#000 !important;margin:0 6px !important;align-self:stretch !important;flex-shrink:0 !important;flex-grow:0 !important}
-            .intro-course-column{display:flex !important;flex-direction:column !important;gap:0 !important;width:25px !important;flex-shrink:0 !important;flex-grow:0 !important;padding:0 !important;margin:0 !important;align-items:center !important;overflow:visible !important}
-            .intro-course-cell{text-align:center !important;font-size:9px !important;line-height:14px !important;min-height:14px !important;height:14px !important;color:#000 !important;font-weight:normal !important;font-family:'Microsoft YaHei','SimSun',monospace !important;padding:0 !important;margin:0 !important;white-space:nowrap !important;writing-mode:horizontal-tb !important;overflow:visible !important;display:flex !important;align-items:center !important;justify-content:center !important}
+            .intro-course-column{display:flex !important;flex-direction:column !important;gap:0 !important;width:32px !important;flex-shrink:0 !important;flex-grow:0 !important;padding:0 !important;margin:0 !important;align-items:center !important;overflow:visible !important}
+            .intro-course-cell{text-align:center !important;font-size:12px !important;line-height:18px !important;min-height:18px !important;height:18px !important;color:#000 !important;font-weight:normal !important;font-family:'Microsoft YaHei','SimSun',monospace !important;padding:0 !important;margin:0 !important;white-space:nowrap !important;writing-mode:horizontal-tb !important;overflow:visible !important;display:flex !important;align-items:center !important;justify-content:center !important}
             @media print{
               @page{size:A4 landscape;margin:10mm}
               html,body{width:100% !important;transform:scale(1) !important}
@@ -4071,6 +4075,12 @@ const printTeacherSchedule = async () => {
   }
 }
 
+// 获取当前学期名称
+const getSemesterName = () => {
+  const sem = semesterOptions.value.find(s => Number(s.semesterId) === Number(semesterId.value))
+  return sem?.semesterName || ''
+}
+
 // 生成教师课表HTML内容
 const generateTeacherScheduleHTML = () => {
   let html = ''
@@ -4084,23 +4094,12 @@ const generateTeacherScheduleHTML = () => {
     return '<div class="no-data">没有找到要打印的实验套</div>'
   }
   
+  const semesterName = getSemesterName()
   for (const suite of suitesToPrint) {
     const suiteId = suite.experimentSuiteId || suite.suiteId
     html += `<div class="suite-schedule">`
-    html += `<h2 class="suite-title">${suite.suiteName}教师课表</h2>`
-    
-    // 单周课表
-    html += `<div class="week-schedule">`
-    html += `<h3 class="week-title">单周</h3>`
-    html += generateTeacherWeekScheduleHTML(suiteId, 0)
-    html += `</div>`
-    
-    // 双周课表
-    html += `<div class="week-schedule">`
-    html += `<h3 class="week-title">双周</h3>`
-    html += generateTeacherWeekScheduleHTML(suiteId, 1)
-    html += `</div>`
-    
+    html += `<h2 class="suite-title">${semesterName}${suite.suiteName}教师课表</h2>`
+    html += generateTeacherFullTableHTML(suiteId)
     html += `</div>`
   }
   
@@ -4159,13 +4158,25 @@ const buildTeacherScheduleRow = (suiteId, weekType, slot, slotLabel) => {
   return html
 }
 
-// 生成教师周次课表HTML
-const generateTeacherWeekScheduleHTML = (suiteId, weekType) => {
+// 生成某个周次类型（单周/双周）的区块：最左为合并的"单周/双周"标签列，右侧含上午/下午两行
+const buildTeacherWeekBlock = (suiteId, weekType, weekLabel) => {
+  let html = '<div class="week-block">'
+  html += `<div class="week-label-cell">${weekLabel}</div>`
+  html += '<div class="week-rows">'
+  html += buildTeacherScheduleRow(suiteId, weekType, 'morning', '上午')
+  html += buildTeacherScheduleRow(suiteId, weekType, 'afternoon', '下午')
+  html += '</div>'
+  html += '</div>'
+  return html
+}
+
+// 生成教师课表整表HTML（单周/双周合并为一张表）
+const generateTeacherFullTableHTML = (suiteId) => {
   let html = '<div class="schedule-table">'
 
-  // 表头
+  // 表头：时间列跨"周次+上午/下午"两列
   html += '<div class="table-header">'
-  html += '<div class="header-cell">时间</div>'
+  html += '<div class="header-cell time-header">时间</div>'
   html += '<div class="header-cell">星期一</div>'
   html += '<div class="header-cell">星期二</div>'
   html += '<div class="header-cell">星期三</div>'
@@ -4173,10 +4184,10 @@ const generateTeacherWeekScheduleHTML = (suiteId, weekType) => {
   html += '<div class="header-cell">星期五</div>'
   html += '</div>'
 
-  // 表体
+  // 表体：单周区块 + 双周区块
   html += '<div class="table-body">'
-  html += buildTeacherScheduleRow(suiteId, weekType, 'morning', '上午')
-  html += buildTeacherScheduleRow(suiteId, weekType, 'afternoon', '下午')
+  html += buildTeacherWeekBlock(suiteId, 0, '单周')
+  html += buildTeacherWeekBlock(suiteId, 1, '双周')
   html += '</div>'
 
   html += '</div>'
