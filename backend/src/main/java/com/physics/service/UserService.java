@@ -75,4 +75,11 @@ public interface UserService extends IService<User> {
      * 如：2021001 -> 2021001(2) -> 2021001(3)...
      */
     String generateUniqueUsername(String baseUsername);
+
+    /**
+     * 批量更新一组学生的分组信息（只更新 group_name/semester_id/suite_id/week_type 四列），
+     * 通过单条 UPDATE ... WHERE user_id IN (...) 完成，避免整行重写与逐行往返。
+     * @return 受影响行数
+     */
+    int updateGroupingByIds(List<Long> userIds, String groupName, Long semesterId, Long suiteId, Integer weekType);
 } 

@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-@Transactional
+@Transactional(rollbackFor = Exception.class)
 public class AutoGroupingServiceImpl implements AutoGroupingService {
     
     @Autowired
@@ -106,6 +106,28 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
         student.setWeekType(weekType);
     }
 
+    /**
+     * 将一批已设置好 groupName/semesterId/suiteId/weekType 的学生按组写回数据库：
+     * 同组合并为一条 UPDATE ... WHERE user_id IN (...)，只更新分组相关列，
+     * 避免整行重写与逐行网络往返。
+     */
+    private void flushGroupingUpdates(List<User> students) {
+        if (students == null || students.isEmpty()) return;
+        Map<String, List<Long>> groupToIds = new LinkedHashMap<>();
+        Map<String, User> groupSample = new HashMap<>();
+        for (User s : students) {
+            if (s == null || s.getUserId() == null) continue;
+            String g = s.getGroupName();
+            groupToIds.computeIfAbsent(g, k -> new ArrayList<>()).add(s.getUserId());
+            groupSample.putIfAbsent(g, s);
+        }
+        for (Map.Entry<String, List<Long>> e : groupToIds.entrySet()) {
+            User sample = groupSample.get(e.getKey());
+            userService.updateGroupingByIds(e.getValue(), e.getKey(),
+                    sample.getSemesterId(), sample.getSuiteId(), sample.getWeekType());
+        }
+    }
+
     private boolean assignABByClassEvenly(List<String> classList, Long semesterId, Long suiteId, Integer weekType) {
         try {
             List<User> toUpdate = new ArrayList<>();
@@ -128,7 +150,7 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
                 log.info("班级 {} 平分为A/B完成: A={}, B={}", className, aCount, n - aCount);
             }
             if (!toUpdate.isEmpty()) {
-                userService.updateBatchById(toUpdate);
+                flushGroupingUpdates(toUpdate);
             }
             return true;
         } catch (Exception e) {
@@ -259,7 +281,7 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
                 log.info("4班平分：组 {} 分配人数 {}", groupName, stus.size());
             }
             if (!toUpdate.isEmpty()) {
-                userService.updateBatchById(toUpdate);
+                flushGroupingUpdates(toUpdate);
             }
 
             return true;
@@ -303,16 +325,19 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
                 if (success) {
                     log.info("创建新的实验安排记录成功，时间段: {}, 学期ID: {}", experimentTime, semesterId);
                     
-                    // 更新学生的 groupName 字段
+                    // 更新学生的 groupName 字段（失败抛异常以触发整体回滚）
                     boolean updateStudentsSuccess = updateStudentGroups(classIds, groupIds, semesterId, suiteId, weekType);
+                    if (!updateStudentsSuccess) {
+                        throw new RuntimeException("更新学生分组失败");
+                    }
                     
                     // 自动创建实验安排（轮换逻辑）
-                    if (updateStudentsSuccess && weekType != null) {
+                    if (weekType != null) {
                         String[] groups = groupIds.split(",");
                         List<String> groupList = Arrays.asList(groups);
                         boolean createExperimentsSuccess = createGroupExperimentsForAllGroups(groupList, semesterId, suiteId, weekType, experimentTime);
                         if (!createExperimentsSuccess) {
-                            log.warn("自动创建实验安排失败，但学生分组已完成");
+                            throw new RuntimeException("自动创建实验安排失败");
                         }
                     }
                     
@@ -342,16 +367,19 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
                 if (success) {
                     log.info("更新实验安排记录成功，时间段: {}, 学期ID: {}, weekType: {}", experimentTime, semesterId, weekType);
                     
-                    // 更新学生的 groupName 字段
+                    // 更新学生的 groupName 字段（失败抛异常以触发整体回滚）
                     boolean updateStudentsSuccess = updateStudentGroups(classIds, groupIds, semesterId, suiteId, weekType);
+                    if (!updateStudentsSuccess) {
+                        throw new RuntimeException("更新学生分组失败");
+                    }
                     
                     // 自动创建实验安排（轮换逻辑）
-                    if (updateStudentsSuccess && weekType != null) {
+                    if (weekType != null) {
                         String[] groups = groupIds.split(",");
                         List<String> groupList = Arrays.asList(groups);
                         boolean createExperimentsSuccess = createGroupExperimentsForAllGroups(groupList, semesterId, suiteId, weekType, experimentTime);
                         if (!createExperimentsSuccess) {
-                            log.warn("自动创建实验安排失败，但学生分组已完成");
+                            throw new RuntimeException("自动创建实验安排失败");
                         }
                     }
                     
@@ -364,8 +392,9 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
             
         } catch (Exception e) {
             log.error("根据时间段更新实验安排分组失败", e);
-            return Result.error("更新实验安排失败: " + e.getMessage());
-                }
+            // 抛出异常以触发 @Transactional 回滚，避免半成品脏数据；由控制器统一转为错误响应
+            throw new RuntimeException("更新实验安排失败: " + e.getMessage(), e);
+        }
     }
     
     /**
@@ -382,9 +411,11 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
         try {
             log.info("开始更新学生分组，班级ID列表: {}, 分组ID列表: {}, weekType: {}", classIds, groupIds, weekType);
             
-            // 重要：现在支持按学期、实验套、周类型分别存储分组信息
-            // 单周和双周可以有不同的分组，不会相互覆盖
-            // 通过 (semester_id, suite_id, week_type, group_name) 唯一区分
+            // 说明：每个学生在 user 表上只保存一份 group_name/semester_id/suite_id/week_type，
+            // 即一个学生同一时间只属于一个分组。常规情况下一个学生只上单周或只上双周，
+            // 故单行模型可满足；若对同一批学生再以不同 weekType 重新分组，会覆盖其原分组
+            // （特殊学生需手动调整）。如需"同一学生在单/双周分属不同组"，须改为独立的
+            // 学生-分组关联表 (user_id, semester_id, suite_id, week_type, group_name)。
             log.info("更新学生分组，学期ID: {}, 实验套ID: {}, 周类型: {}", semesterId, suiteId, weekType);
             
             // 解析班级列表
@@ -508,7 +539,7 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
             }
             
             if (!toUpdate.isEmpty()) {
-                userService.updateBatchById(toUpdate);
+                flushGroupingUpdates(toUpdate);
             }
             
             // 超过24人的学生不在这里分配，留给C组D组分配
@@ -593,7 +624,7 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
                     }
                 }
                 if (!toUpdate.isEmpty()) {
-                    userService.updateBatchById(toUpdate);
+                    flushGroupingUpdates(toUpdate);
                 }
             }
             
