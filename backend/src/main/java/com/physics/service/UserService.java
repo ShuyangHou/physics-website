@@ -1,6 +1,7 @@
 package com.physics.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.physics.dto.GroupAssignmentDTO;
 import com.physics.dto.LoginRequest;
 import com.physics.dto.LoginResponse;
 import com.physics.dto.ImportResult;
@@ -34,6 +35,14 @@ public interface UserService extends IService<User> {
      * @return 学生列表
      */
     List<User> getStudentsByClassName(String className);
+
+    /**
+     * 一次性获取多个班级的学生（class_id IN (...)），按 class_id、school_id 排序，
+     * 取代“逐班一次 SELECT”的多次远程往返。
+     * @param classNames 班级名称列表
+     * @return 学生列表
+     */
+    List<User> getStudentsByClassNames(List<String> classNames);
     
     /**
      * 获取所有教师
@@ -82,4 +91,11 @@ public interface UserService extends IService<User> {
      * @return 受影响行数
      */
     int updateGroupingByIds(List<Long> userIds, String groupName, Long semesterId, Long suiteId, Integer weekType);
+
+    /**
+     * 整批学生分组写回：所有学生共享同一 semester/suite/week，仅 group_name 因人而异，
+     * 通过单条 CASE WHEN UPDATE 一次往返完成，取代“每组一条 UPDATE”。
+     * @return 受影响行数
+     */
+    int updateGroupingBatch(List<GroupAssignmentDTO> assignments, Long semesterId, Long suiteId, Integer weekType);
 } 
