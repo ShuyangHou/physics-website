@@ -43,6 +43,11 @@
               <el-icon><Refresh /></el-icon>
               清空当前输入
             </el-button>
+
+            <el-button type="warning" @click="openTeacherAssignOverview" v-if="isAdmin && !readonly" size="large">
+              <el-icon><User /></el-icon>
+              教师分配
+            </el-button>
             
             <!-- 打印课表按钮 -->
             <el-divider direction="vertical" />
@@ -132,6 +137,7 @@
                       <el-button size="small" @click="handleCellRegroup(d, slot)">重新分组</el-button>
                     </div>
                     <div class="cell-actions-right">
+                      <el-button size="small" type="warning" @click="openTeacherSettingFromCell(d, slot)">分配教师</el-button>
                       <el-button size="small" type="primary" @click="openBatchDialog(d, slot)">批量设置</el-button>
                     </div>
                   </div>
@@ -570,7 +576,73 @@
         </span>
       </template>
     </el-dialog>
-    
+
+    <!-- 教师分配总览对话框（全局入口）：一屏集中分配所有已分组时间段的教师 -->
+    <el-dialog
+      v-model="teacherAssignDialogVisible"
+      title="教师分配总览"
+      width="1000px"
+      top="5vh"
+      :close-on-click-modal="false"
+    >
+      <div v-loading="teacherAssignLoading">
+        <el-alert
+          type="info"
+          show-icon
+          :closable="false"
+          style="margin-bottom: 12px"
+          :title="`当前：${getSuiteName(selectedSuiteId) || '未选实验套'} · ${weekType === 0 ? '单周' : '双周'}。为下方每个时间段的实验分配教师（每2个实验一位老师），可一次性保存全部。`"
+        />
+        <el-empty
+          v-if="!teacherAssignLoading && teacherAssignOverview.length === 0"
+          description="当前实验套 / 周次下没有已分组的时间段，请先在课表中完成分组"
+        />
+        <div
+          v-for="slotPlan in teacherAssignOverview"
+          :key="slotPlan.fullTimeSlot"
+          class="overview-slot-block"
+        >
+          <div class="overview-slot-title">
+            <el-tag type="primary" effect="dark">{{ slotPlan.fullTimeSlot }}</el-tag>
+          </div>
+          <el-table :data="slotPlan.plan" border size="small" style="width: 100%">
+            <el-table-column label="实验名称">
+              <template #default="scope">
+                <div v-for="exp in scope.row.experiments" :key="exp.experimentId" class="experiment-item">
+                  {{ exp.experimentName }}
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="负责教师" width="200">
+              <template #default="scope">
+                <el-select v-model="scope.row.teacherId" placeholder="选择教师" clearable filterable style="width:100%">
+                  <el-option v-for="t in teacherList" :key="t.userId" :label="t.realName" :value="String(t.userId)"/>
+                </el-select>
+              </template>
+            </el-table-column>
+            <el-table-column label="是否绪论课" width="110" align="center">
+              <template #default="scope">
+                <el-checkbox v-model="scope.row.isIntroClass"></el-checkbox>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="teacherAssignDialogVisible = false">取消</el-button>
+          <el-button
+            type="primary"
+            :loading="savingTeacherAssignAll"
+            :disabled="teacherAssignOverview.length === 0"
+            @click="saveTeacherAssignOverview"
+          >
+            {{ savingTeacherAssignAll ? '保存中...' : '保存全部教师分配' }}
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
+
         <!-- 打印课表选择对话框 -->
     <el-dialog v-model="showPrintScheduleDialog" title="打印课表" width="600px" :close-on-click-modal="false">
       <div class="print-schedule-container">
@@ -2150,6 +2222,12 @@ const teacherSettingForm = reactive({
 const teacherAssignmentPlan = ref([])
 const savingTeacherAssignment = ref(false)
 
+// 教师分配总览（全局入口）相关状态
+const teacherAssignDialogVisible = ref(false)
+const teacherAssignOverview = ref([]) // [{ weekday, slot, fullTimeSlot, plan: [{ groupIndex, experiments, teacherId, isIntroClass }] }]
+const teacherAssignLoading = ref(false)
+const savingTeacherAssignAll = ref(false)
+
 // 根据实验套拉取实验（优先使用后端按套接口；失败再退化）
 const ensureExperimentsForSuite = async () => {
   try {
@@ -3114,6 +3192,176 @@ const handleSaveTeacherAssignment = async () => {
   } finally {
     // 无论成功失败都要关闭加载状态
     savingTeacherAssignment.value = false
+  }
+}
+
+// ===== A：从某个时间段格子直接打开「教师设置」窗（跳过批量设置那层） =====
+const openTeacherSettingFromCell = async (weekday, slot) => {
+  try {
+    batchContext.weekday = weekday
+    batchContext.slot = slot
+    if (!teacherList.value.length) await loadTeacherListWithProgress(true)
+    // openTeacherSettingDialog 会按 selectedSuiteId + batchContext 装配并回显
+    await openTeacherSettingDialog()
+  } catch (error) {
+    console.error('打开教师设置失败:', error)
+    ElMessage.error('打开教师设置失败')
+  }
+}
+
+// ===== B：全局「教师分配」总览 =====
+// 取当前实验套的有序实验，并按每 2 个实验组成一对（与单时段教师设置一致）
+const getOrderedExperimentPairs = async (suiteId) => {
+  const suiteResponse = await getSuiteList({ current: 1, size: 1000 })
+  const suites = suiteResponse?.data?.records || suiteResponse?.data || []
+  const currentSuite = suites.find(s => s.suiteId === suiteId || s.experimentSuiteId === suiteId)
+  if (!currentSuite) return []
+  let experimentIds = []
+  try {
+    if (currentSuite.experimentIds) experimentIds = JSON.parse(currentSuite.experimentIds)
+  } catch (e) {
+    console.error('解析实验套实验ID失败:', e)
+  }
+  if (!experimentIds.length) return []
+  const response = await getExperimentList({ current: 1, size: 1000 })
+  const allExperiments = response?.data?.records || response?.data || []
+  const ordered = []
+  for (const id of experimentIds) {
+    const exp = allExperiments.find(e => e.experimentId === id)
+    if (exp) ordered.push(exp)
+  }
+  const pairs = []
+  for (let i = 0; i < ordered.length; i += 2) {
+    pairs.push({ groupIndex: Math.floor(i / 2), experiments: ordered.slice(i, i + 2) })
+  }
+  return pairs
+}
+
+// 打开总览：列出当前学期/实验套/单双周下「已分组」的所有时间段，集中分配教师
+const openTeacherAssignOverview = async () => {
+  const suiteId = selectedSuiteId.value
+  if (!suiteId) { ElMessage.warning('请先选择实验套'); return }
+  if (!semesterId.value) { ElMessage.warning('请先选择学期'); return }
+
+  teacherAssignOverview.value = []
+  teacherAssignLoading.value = true
+  teacherAssignDialogVisible.value = true
+  try {
+    if (!teacherList.value.length) await loadTeacherListWithProgress(true)
+
+    // 找出当前已完成分组的时间段（格子里有组名）
+    const activeSlots = []
+    for (const slot of timeSlots) {
+      for (const d of weekdays) {
+        const cell = cellState[d] && cellState[d][slot]
+        if (cell && cell.groupNames && cell.groupNames.length > 0) {
+          activeSlots.push({ weekday: d, slot })
+        }
+      }
+    }
+
+    const pairs = await getOrderedExperimentPairs(suiteId)
+    if (!pairs.length) {
+      ElMessage.warning('该实验套没有实验，无法分配教师')
+      return
+    }
+
+    // 一次性拉取本学期+套+周次的全部 group_experiment 用于回显（按时间段过滤）
+    let allGroupExperiments = []
+    try {
+      const resp = await getAllGroupExperiments({ semesterId: semesterId.value, suiteId, weekType: weekType.value })
+      allGroupExperiments = resp.data || []
+    } catch (e) {
+      console.error('获取已有教师分配失败:', e)
+    }
+
+    const prefix = weekType.value === 0 ? '单' : '双'
+    teacherAssignOverview.value = activeSlots.map(({ weekday, slot }) => {
+      const fullTimeSlot = `${prefix}${weekday}${slot}`
+      const tMap = new Map()
+      const iMap = new Map()
+      allGroupExperiments.forEach(ge => {
+        const ts = String(ge?.timeSlot || '')
+        const matched = ts
+          ? ts.replace(/\s+/g, '') === fullTimeSlot.replace(/\s+/g, '')
+          : matchTime(ge.experimentTime || ge.scheduleTime || '', prefix, weekday, slot, ge)
+        if (matched && ge.experimentId && ge.teacherId) {
+          if (!tMap.has(ge.experimentId) || ge.isIntroCourse === 1) {
+            tMap.set(ge.experimentId, String(ge.teacherId))
+            iMap.set(ge.experimentId, ge.isIntroCourse === 1)
+          }
+        }
+      })
+      const plan = pairs.map(p => {
+        let teacherId = null
+        let isIntroClass = false
+        for (const exp of p.experiments) {
+          if (tMap.has(exp.experimentId)) {
+            if (!teacherId || iMap.get(exp.experimentId)) {
+              teacherId = tMap.get(exp.experimentId)
+              isIntroClass = iMap.get(exp.experimentId) || false
+            }
+          }
+        }
+        return { groupIndex: p.groupIndex, experiments: p.experiments, teacherId, isIntroClass }
+      })
+      return { weekday, slot, fullTimeSlot, plan }
+    })
+  } catch (error) {
+    console.error('打开教师分配总览失败:', error)
+    ElMessage.error('打开教师分配总览失败')
+  } finally {
+    teacherAssignLoading.value = false
+  }
+}
+
+// 保存总览：逐时间段调用已优化的 saveTeacherAssignment，复用既有后端逻辑
+const saveTeacherAssignOverview = async () => {
+  for (const slotPlan of teacherAssignOverview.value) {
+    const unassigned = slotPlan.plan.filter(it => !it.teacherId)
+    if (unassigned.length) {
+      ElMessage.warning(`「${slotPlan.fullTimeSlot}」还有实验未分配教师`)
+      return
+    }
+  }
+
+  savingTeacherAssignAll.value = true
+  let ok = 0
+  let fail = 0
+  try {
+    for (const slotPlan of teacherAssignOverview.value) {
+      const requestData = {
+        semesterId: semesterId.value,
+        suiteId: selectedSuiteId.value,
+        timeSlot: `${slotPlan.weekday}${slotPlan.slot}`,
+        weekType: weekType.value,
+        assignments: slotPlan.plan.flatMap(item =>
+          item.experiments.map(exp => ({
+            experimentId: exp.experimentId,
+            teacherId: item.teacherId,
+            isIntroCourse: item.isIntroClass ? 1 : 0
+          }))
+        )
+      }
+      try {
+        const resp = await saveTeacherAssignment(requestData)
+        if (resp.code === 200) ok++
+        else { fail++; console.error('保存失败:', slotPlan.fullTimeSlot, resp.message) }
+      } catch (e) {
+        fail++
+        console.error('保存异常:', slotPlan.fullTimeSlot, e)
+      }
+    }
+
+    if (fail === 0) {
+      ElMessage.success(`教师分配已保存（${ok} 个时间段）`)
+      teacherAssignDialogVisible.value = false
+      await loadScheduleList()
+    } else {
+      ElMessage.error(`保存完成：成功 ${ok} 个，失败 ${fail} 个，请重试失败的时间段`)
+    }
+  } finally {
+    savingTeacherAssignAll.value = false
   }
 }
 
@@ -4860,6 +5108,14 @@ const generateWeekScheduleHTML = (suiteId, weekType) => {
 
 .experiment-item:last-child {
   border-bottom: none;
+}
+
+/* 教师分配总览：每个时间段一块 */
+.overview-slot-block {
+  margin-bottom: 18px;
+}
+.overview-slot-title {
+  margin-bottom: 8px;
 }
 
 /* 课表导出样式 */
