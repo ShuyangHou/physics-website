@@ -110,7 +110,6 @@ public class GroupingUtils {
      */
     private List<String> generateGroupList(List<String> classList, int groupCount) {
         List<String> groups = new ArrayList<>();
-        int totalRemainingStudents = 0;
 
         // 固定规则：2/3班仅分A/B；4班固定10组（4*2 + C/D）
         if (classList.size() == 2 || classList.size() == 3) {
@@ -138,60 +137,23 @@ public class GroupingUtils {
             return groups;
         }
         
-        // 第一步：为每个班级生成A组和B组
+        // 其他班级数（单班或≥5班）：每班独立按每组约 DEFAULT_STUDENTS_PER_GROUP 人均分为若干组，
+        // 组名为 班级+字母（A、B、C…），组内不跨班；组数与 AutoGroupingServiceImpl.assignEvenlyPerClass 保持一致。
         for (String className : classList) {
-            // 获取当前班级的学生数
             Long classStudentCount = userService.countStudentsByClassName(className);
-            
-            // 每个班级的前12个学生 → A组
-            if (classStudentCount > 0) {
-                groups.add(className + "A");
+            long size = (classStudentCount == null ? 0 : classStudentCount);
+            if (size <= 0) {
+                continue;
             }
-            
-            // 每个班级的第13-24个学生 → B组
-            if (classStudentCount > 12) {
-                groups.add(className + "B");
+            int n = (int) Math.ceil(size / (double) DEFAULT_STUDENTS_PER_GROUP);
+            if (n < 1) n = 1;
+            if (n > 26) n = 26;
+            for (int i = 0; i < n; i++) {
+                groups.add(className + (char) ('A' + i));
             }
-            
-            // 计算剩余学生数（超过24人的部分）
-            if (classStudentCount > 24) {
-                totalRemainingStudents += (int) (classStudentCount - 24);
-            }
+            log.info("班级 {} 共 {} 人，生成 {} 个组", className, size, n);
         }
-        
-        // 第二步：所有班级的剩余学生共同组成C组和D组
-        // 注意：如果只有2个班级，只生成C组（不生成D组）
-        if (totalRemainingStudents > 0) {
-            // 使用第一个班级的名称作为C组和D组的标识
-            String firstClassName = classList.get(0);
-            
-            // 根据班级数量和剩余学生数量决定分配多少个组
-            if (classList.size() == 2) {
-                // 两个班级：只生成C组（即使剩余学生超过12人，也不生成D组）
-                groups.add(firstClassName + "C");
-                log.info("两个班级，剩余学生总数: {}，只分配1个组: {}", totalRemainingStudents, firstClassName + "C");
-            } else if (totalRemainingStudents <= 12) {
-                // 剩余学生数 ≤ 12，只分配一个组（C组）
-                groups.add(firstClassName + "C");
-                log.info("剩余学生总数: {} (≤12)，分配1个组: {}", totalRemainingStudents, firstClassName + "C");
-            } else if (totalRemainingStudents <= 24) {
-                // 剩余学生数 13-24，分配两个组（C组和D组）
-                groups.add(firstClassName + "C");
-                groups.add(firstClassName + "D");
-                log.info("剩余学生总数: {} (13-24)，分配2个组: {}, {}", totalRemainingStudents, firstClassName + "C", firstClassName + "D");
-            } else {
-                // 剩余学生数 > 24，平均分配到C组和D组
-                int cGroupStudents = totalRemainingStudents / 2;
-                int dGroupStudents = totalRemainingStudents - cGroupStudents;
-                
-                groups.add(firstClassName + "C");
-                groups.add(firstClassName + "D");
-                
-                log.info("剩余学生总数: {} (>24)，C组人数: {}, D组人数: {}", 
-                        totalRemainingStudents, cGroupStudents, dGroupStudents);
-            }
-        }
-        
+
         return groups;
     }
     
