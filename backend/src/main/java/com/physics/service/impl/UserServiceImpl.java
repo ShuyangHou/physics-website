@@ -3,6 +3,7 @@ package com.physics.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.physics.dto.GroupAssignmentDTO;
 import com.physics.dto.LoginRequest;
 import com.physics.dto.LoginResponse;
 import com.physics.dto.ImportResult;
@@ -245,6 +246,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         // update 返回是否成功；这里以入参数量作为受影响行数的近似返回
         return this.update(wrapper) ? userIds.size() : 0;
     }
+
+    @Override
+    public int updateGroupingBatch(List<GroupAssignmentDTO> assignments, Long semesterId, Long suiteId, Integer weekType) {
+        if (assignments == null || assignments.isEmpty()) {
+            return 0;
+        }
+        return this.baseMapper.updateGroupingBatch(assignments, semesterId, suiteId, weekType);
+    }
     
     @Override
     public Long countStudentsByClassName(String className) {
@@ -260,6 +269,19 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         wrapper.eq("class_id", className)
                .eq("user_type", "student")
                .orderByAsc("school_id"); // 按学号排序
+        return this.list(wrapper);
+    }
+
+    @Override
+    public List<User> getStudentsByClassNames(List<String> classNames) {
+        if (classNames == null || classNames.isEmpty()) {
+            return new ArrayList<>();
+        }
+        QueryWrapper<User> wrapper = new QueryWrapper<>();
+        wrapper.in("class_id", classNames)
+               .eq("user_type", "student")
+               .orderByAsc("class_id")
+               .orderByAsc("school_id"); // 同班内按学号排序
         return this.list(wrapper);
     }
     

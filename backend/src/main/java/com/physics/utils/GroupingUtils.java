@@ -113,14 +113,25 @@ public class GroupingUtils {
             return plan;
         }
 
-        // 读取并按学号排序每个班级的学生（一次读取，供组名与分配共用）
+        // 一次性读取所有班级的学生（class_id IN (...)），再按班级归类，避免逐班多次远程往返
+        List<String> normalizedClasses = new ArrayList<>();
         LinkedHashMap<String, List<User>> classToStudents = new LinkedHashMap<>();
         for (String className : classList) {
             if (className == null || className.trim().isEmpty()) continue;
-            List<User> students = userService.getStudentsByClassName(className.trim());
-            if (students == null) students = new ArrayList<>();
+            String c = className.trim();
+            normalizedClasses.add(c);
+            classToStudents.put(c, new ArrayList<>());
+        }
+        List<User> allStudents = userService.getStudentsByClassNames(normalizedClasses);
+        if (allStudents != null) {
+            for (User stu : allStudents) {
+                List<User> bucket = classToStudents.get(stu.getClassId());
+                if (bucket != null) bucket.add(stu);
+            }
+        }
+        // 同班内按学号排序，保证分组稳定可复现
+        for (List<User> students : classToStudents.values()) {
             sortStudentsBySchoolId(students);
-            classToStudents.put(className.trim(), students);
         }
 
         int classCount = classList.size();

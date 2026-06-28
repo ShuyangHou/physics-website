@@ -2,6 +2,7 @@ package com.physics.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.physics.common.Result;
+import com.physics.dto.GroupAssignmentDTO;
 import com.physics.entity.ExperimentSchedule;
 import com.physics.entity.GroupExperiment;
 import com.physics.entity.Experiment;
@@ -24,7 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -85,25 +85,22 @@ public class AutoGroupingServiceImpl implements AutoGroupingService {
     }
 
     /**
-     * 将一批已设置好 groupName/semesterId/suiteId/weekType 的学生按组写回数据库：
-     * 同组合并为一条 UPDATE ... WHERE user_id IN (...)，只更新分组相关列，
-     * 避免整行重写与逐行网络往返。
+     * 将一批已设置好 groupName/semesterId/suiteId/weekType 的学生写回数据库：
+     * 本次分组的所有学生共享同一 semester/suite/week，仅 group_name 因人而异，
+     * 合并为单条 CASE WHEN UPDATE 一次往返完成，避免整行重写与逐行/逐组网络往返。
      */
     private void flushGroupingUpdates(List<User> students) {
         if (students == null || students.isEmpty()) return;
-        Map<String, List<Long>> groupToIds = new LinkedHashMap<>();
-        Map<String, User> groupSample = new HashMap<>();
+        List<GroupAssignmentDTO> assignments = new ArrayList<>();
+        User sample = null;
         for (User s : students) {
             if (s == null || s.getUserId() == null) continue;
-            String g = s.getGroupName();
-            groupToIds.computeIfAbsent(g, k -> new ArrayList<>()).add(s.getUserId());
-            groupSample.putIfAbsent(g, s);
+            if (sample == null) sample = s;
+            assignments.add(new GroupAssignmentDTO(s.getUserId(), s.getGroupName()));
         }
-        for (Map.Entry<String, List<Long>> e : groupToIds.entrySet()) {
-            User sample = groupSample.get(e.getKey());
-            userService.updateGroupingByIds(e.getValue(), e.getKey(),
-                    sample.getSemesterId(), sample.getSuiteId(), sample.getWeekType());
-        }
+        if (assignments.isEmpty()) return;
+        userService.updateGroupingBatch(assignments,
+                sample.getSemesterId(), sample.getSuiteId(), sample.getWeekType());
     }
 
     @Override
