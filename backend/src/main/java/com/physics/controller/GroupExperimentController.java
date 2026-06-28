@@ -20,6 +20,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.ArrayList;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 
 @Slf4j
 @RestController
@@ -276,23 +279,54 @@ public class GroupExperimentController {
      */
     private List<Map<String, Object>> processSchedules(List<ExperimentSchedule> schedules, Long semesterId, Long suiteId, Integer weekType) {
         List<Map<String, Object>> result = new ArrayList<>();
-        
+
+        // 预取1：一次性收集所有小组名，批量查 group_experiment（避免每个小组查一次库）
+        Set<String> allGroupNames = new LinkedHashSet<>();
         for (ExperimentSchedule schedule : schedules) {
-            // 2. 解析group_ids数组
+            allGroupNames.addAll(parseGroupIds(schedule.getGroupIds()));
+        }
+        if (allGroupNames.isEmpty()) {
+            return result;
+        }
+
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<GroupExperiment> geQuery =
+            new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
+        geQuery.eq("semester_id", semesterId);
+        geQuery.eq("suite_id", suiteId);
+        geQuery.in("group_name", allGroupNames);
+        List<GroupExperiment> allGroupExperiments = groupExperimentService.list(geQuery);
+
+        // 按小组名归集，循环内 O(1) 取用
+        Map<String, List<GroupExperiment>> geByGroup = new HashMap<>();
+        for (GroupExperiment ge : allGroupExperiments) {
+            geByGroup.computeIfAbsent(ge.getGroupName(), k -> new ArrayList<>()).add(ge);
+        }
+
+        // 预取2：批量取实验名，避免循环内逐条 getById
+        Set<Long> experimentIds = new HashSet<>();
+        for (GroupExperiment ge : allGroupExperiments) {
+            if (ge.getExperimentId() != null) {
+                experimentIds.add(ge.getExperimentId());
+            }
+        }
+        Map<Long, String> experimentNameById = new HashMap<>();
+        if (!experimentIds.isEmpty()) {
+            for (Experiment experiment : experimentService.listByIds(experimentIds)) {
+                experimentNameById.put(experiment.getExperimentId(), experiment.getExperimentName());
+            }
+        }
+
+        for (ExperimentSchedule schedule : schedules) {
             List<String> groupNames = parseGroupIds(schedule.getGroupIds());
-            
+
             for (String groupName : groupNames) {
-                // 3. 从group_experiment表获取该小组的具体实验信息
-                com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<GroupExperiment> geQuery = 
-                    new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
-                geQuery.eq("semester_id", semesterId);
-                geQuery.eq("suite_id", suiteId);
-                geQuery.eq("group_name", groupName);
-                
-                List<GroupExperiment> groupExperiments = groupExperimentService.list(geQuery);
-                
+                List<GroupExperiment> groupExperiments = geByGroup.get(groupName);
+                if (groupExperiments == null) {
+                    continue;
+                }
+
                 for (GroupExperiment ge : groupExperiments) {
-                    // 4. 检查周次是否匹配（单周/双周）
+                    // 检查周次是否匹配（单周/双周）
                     if (isWeekTypeMatch(ge.getExperimentTime(), weekType)) {
                         Map<String, Object> scheduleItem = new HashMap<>();
                         scheduleItem.put("groupName", groupName);
@@ -314,25 +348,19 @@ public class GroupExperimentController {
 
                         // 周次（例如 "第3周"）
                         scheduleItem.put("weekNumber", ge.getExperimentTime());
-                        
-                        // 5. 获取实验名称
-                        if (ge.getExperimentId() != null) {
-                            Experiment experiment = experimentService.getById(ge.getExperimentId());
-                            if (experiment != null) {
-                                scheduleItem.put("experimentName", experiment.getExperimentName());
-                            } else {
-                                scheduleItem.put("experimentName", "未知实验");
-                            }
-                        } else {
-                            scheduleItem.put("experimentName", "未知实验");
-                        }
-                        
+
+                        // 实验名称（来自预取 Map）
+                        String experimentName = ge.getExperimentId() != null
+                            ? experimentNameById.get(ge.getExperimentId())
+                            : null;
+                        scheduleItem.put("experimentName", experimentName != null ? experimentName : "未知实验");
+
                         result.add(scheduleItem);
                     }
                 }
             }
         }
-        
+
         return result;
     }
 
