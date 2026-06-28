@@ -281,10 +281,8 @@ const loadSuiteList = async () => {
       suiteList.value = response.data.records
       pagination.total = response.data.total
       
-      // 为每个实验套加载详情并映射名称
-      for (let suite of suiteList.value) {
-        await loadSuiteDetail(suite)
-      }
+      // 为每个实验套并行加载详情并映射名称，避免逐个串行请求造成的卡顿
+      await Promise.all(suiteList.value.map(suite => loadSuiteDetail(suite)))
     } else {
       ElMessage.error(response.message || '加载实验套列表失败')
     }
@@ -329,10 +327,18 @@ const getExperimentCount = (suite) => {
 
 // 使用统一时间格式
 
+// 实验ID到名称的映射，避免在列表渲染时反复线性查找
+const experimentNameMap = computed(() => {
+  const map = new Map()
+  for (const e of experimentList.value) {
+    map.set(e.experimentId, e.experimentName)
+  }
+  return map
+})
+
 // 获取实验名称
 const getExperimentName = (experimentId) => {
-  const experiment = experimentList.value.find(e => e.experimentId === experimentId)
-  return experiment ? experiment.experimentName : '未知实验'
+  return experimentNameMap.value.get(experimentId) || '未知实验'
 }
 
 // 处理实验选择变化

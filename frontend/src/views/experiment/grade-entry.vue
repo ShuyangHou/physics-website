@@ -1483,17 +1483,22 @@ const handleBatchLock = async () => {
     batchLocking.value = true
     let successCount = 0
     let failCount = 0
-    
-    // 逐个冻结
-    for (const student of studentsToLock) {
-      try {
-        await lockGrade(student.gradeId)
-        student.isLocked = true
-        successCount++
-      } catch (error) {
-        console.error(`冻结 ${student.studentName} 的成绩失败:`, error)
-        failCount++
-      }
+
+    // 并发分批冻结，避免逐个串行等待造成的卡顿
+    const batchSize = 20
+    for (let i = 0; i < studentsToLock.length; i += batchSize) {
+      const batch = studentsToLock.slice(i, i + batchSize)
+      const results = await Promise.all(batch.map(async (student) => {
+        try {
+          await lockGrade(student.gradeId)
+          student.isLocked = true
+          return true
+        } catch (error) {
+          console.error(`冻结 ${student.studentName} 的成绩失败:`, error)
+          return false
+        }
+      }))
+      results.forEach(ok => { ok ? successCount++ : failCount++ })
     }
     
     if (successCount > 0) {
@@ -1541,17 +1546,22 @@ const handleBatchUnlock = async () => {
     batchUnlocking.value = true
     let successCount = 0
     let failCount = 0
-    
-    // 逐个解冻
-    for (const student of studentsToUnlock) {
-      try {
-        await unlockGrade(student.gradeId, password.value)
-        student.isLocked = false
-        successCount++
-      } catch (error) {
-        console.error(`解冻 ${student.studentName} 的成绩失败:`, error)
-        failCount++
-      }
+
+    // 并发分批解冻，避免逐个串行等待造成的卡顿
+    const batchSize = 20
+    for (let i = 0; i < studentsToUnlock.length; i += batchSize) {
+      const batch = studentsToUnlock.slice(i, i + batchSize)
+      const results = await Promise.all(batch.map(async (student) => {
+        try {
+          await unlockGrade(student.gradeId, password.value)
+          student.isLocked = false
+          return true
+        } catch (error) {
+          console.error(`解冻 ${student.studentName} 的成绩失败:`, error)
+          return false
+        }
+      }))
+      results.forEach(ok => { ok ? successCount++ : failCount++ })
     }
     
     if (successCount > 0) {
