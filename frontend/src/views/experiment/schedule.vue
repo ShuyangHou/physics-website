@@ -302,6 +302,8 @@
     <!-- 批量设置对话框 -->
     <el-dialog v-model="batchDialogVisible" title="批量设置（按小组逐周配置）" width="900px">
       <el-form label-width="90px">
+        <el-tabs v-model="batchActiveTab" class="batch-tabs">
+        <el-tab-pane label="周次配置" name="weeks">
         <el-form-item label="小组">
           <el-select v-model="batchForm.singleGroup" placeholder="选择小组" style="width:100%" v-if="batchOptionsReady">
             <el-option
@@ -373,10 +375,11 @@
             </template>
           </el-table-column>
         </el-table>
+        </el-tab-pane>
 
-        <el-divider />
-        <div style="display:flex;align-items:center;gap:10px;margin:8px 0 12px;">
-          <span style="font-weight:600;">手动分组</span>
+        <el-tab-pane label="手动挑学生" name="manual">
+        <div style="display:flex;align-items:center;gap:10px;margin:0 0 12px;">
+          <span style="font-weight:600;">按班级手动挑选学生并设置组号</span>
           <el-tooltip content="即使已自动分组，也可在此按班级手动挑选学生并设置组号" placement="top">
             <el-icon><InfoFilled /></el-icon>
           </el-tooltip>
@@ -506,6 +509,8 @@
             <el-button @click="resetManualGrouping">重新分组</el-button>
           </div>
         </div>
+        </el-tab-pane>
+        </el-tabs>
       </el-form>
       <template #footer>
         <span class="dialog-footer">
@@ -2204,6 +2209,7 @@ const handleWeekTypeChange = async () => {
 
 // 自动监听选择变化，确保下拉改变即刷新
 const batchDialogVisible = ref(false)
+const batchActiveTab = ref('weeks') // 批量设置弹窗当前标签页：weeks=周次配置, manual=手动挑学生
 const batchContext = reactive({ weekday: '', slot: '' })
 const batchForm = reactive({
   singleGroup: '',
@@ -2364,6 +2370,7 @@ const manualStudentsTable = ref(null)
 const openBatchDialog = async (weekday, slot) => {
   try {
     batchDialogInstanceKey.value++
+    batchActiveTab.value = 'weeks'
     batchContext.weekday = weekday
     batchContext.slot = slot
     const cell = cellState[weekday][slot]
